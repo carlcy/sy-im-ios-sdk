@@ -14,7 +14,7 @@ OpenIM iOS has **no official SPM**. Production path:
 
 ```bash
 # Host Podfile
-pod 'SyImSDK', :path => './sy-im-ios-sdk'   # pulls OpenIMSDK 3.8.3+hotfix.3.1
+pod 'SyImSDK', :git => 'https://github.com/carlcy/sy-im-ios-sdk.git', :tag => 'v0.4.0'
 # or unzip sy-im-ios-0.4.0.zip then path to that folder
 ```
 

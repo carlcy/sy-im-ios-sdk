@@ -1,0 +1,59 @@
+PODS:
+  - MJExtension (3.4.2)
+  - "OpenIMSDK (3.8.3+hotfix.3.1)":
+    - MJExtension
+    - "OpenIMSDK/Callbacker (= 3.8.3+hotfix.3.1)"
+    - "OpenIMSDK/CallbackProxy (= 3.8.3+hotfix.3.1)"
+    - "OpenIMSDK/Interface (= 3.8.3+hotfix.3.1)"
+    - "OpenIMSDK/Model (= 3.8.3+hotfix.3.1)"
+    - "OpenIMSDK/Utils (= 3.8.3+hotfix.3.1)"
+    - "OpenIMSDKCore (= 3.8.3+3)"
+  - "OpenIMSDK/Callbacker (3.8.3+hotfix.3.1)":
+    - MJExtension
+    - OpenIMSDK/Model
+    - OpenIMSDK/Utils
+    - "OpenIMSDKCore (= 3.8.3+3)"
+  - "OpenIMSDK/CallbackProxy (3.8.3+hotfix.3.1)":
+    - MJExtension
+    - OpenIMSDK/Utils
+    - "OpenIMSDKCore (= 3.8.3+3)"
+  - "OpenIMSDK/Interface (3.8.3+hotfix.3.1)":
+    - MJExtension
+    - OpenIMSDK/Callbacker
+    - OpenIMSDK/CallbackProxy
+    - OpenIMSDK/Model
+    - "OpenIMSDKCore (= 3.8.3+3)"
+  - "OpenIMSDK/Model (3.8.3+hotfix.3.1)":
+    - MJExtension
+    - OpenIMSDK/Utils
+    - "OpenIMSDKCore (= 3.8.3+3)"
+  - "OpenIMSDK/Utils (3.8.3+hotfix.3.1)":
+    - MJExtension
+    - "OpenIMSDKCore (= 3.8.3+3)"
+  - "OpenIMSDKCore (3.8.3+3)"
+  - SyImSDK (0.4.0):
+    - "OpenIMSDK (= 3.8.3+hotfix.3.1)"
+
+DEPENDENCIES:
+  - "OpenIMSDK (= 3.8.3+hotfix.3.1)"
+  - SyImSDK (from `..`)
+
+SPEC REPOS:
+  trunk:
+    - MJExtension
+    - OpenIMSDK
+    - OpenIMSDKCore
+
+EXTERNAL SOURCES:
+  SyImSDK:
+    :path: ".."
+
+SPEC CHECKSUMS:
+  MJExtension: e97d164cb411aa9795cf576093a1fa208b4a8dd8
+  OpenIMSDK: c1880296ead605bcac2a289ad0aef9170fe6e6df
+  OpenIMSDKCore: 75caba22be8ee484011f367711178312bd64a17d
+  SyImSDK: 5c23eddc0d01562564cdc513d36ca4aa30d98159
+
+PODFILE CHECKSUM: dc5b318482ff94faf4ec0fe452be85e9746a5018
+
+COCOAPODS: 1.16.2

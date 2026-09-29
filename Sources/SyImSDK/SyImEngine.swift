@@ -24,7 +24,7 @@ public enum SyImClientBackend: String, Sendable {
 /// 公共 API 与 Android `ImEngine` / Flutter `SyIm` 对齐。
 /// **默认** `backend: .openImSdk` → CocoaPods `OpenIMSDK` / `RealOpenImClient`。
 /// HttpWs 仅在显式 `backend: .httpWs` 时使用；地址为空且 `.mock` 时用 Mock。
-/// OpenIM iOS 无官方 SPM — 生产请用 CocoaPods（见 example/Podfile）。
+/// 客户接入：`pod 'SyImSDK', '~> 0.5.0'`。OpenIM iOS 无 SPM，生产不要用 Package.swift。
 public final class SyImEngine {
     public let appId: String
     public let apiBaseUrl: String
@@ -53,6 +53,7 @@ public final class SyImEngine {
         self.imApiAddr = imApiAddr
         self.imWsAddr = imWsAddr
         self.client = client
+        client.setEventSink(self)
     }
 
     /// 初始化单例引擎。
@@ -216,9 +217,139 @@ public final class SyImEngine {
         try await sendTextMessage(userId: toUserId, groupId: nil, text: text)
     }
 
-    /// Conversation list stub — real OpenIM `getAllConversationList` when wired.
+    /// 会话列表。每条会话的 `unreadCount` 是该会话未读数。
     public func getConversations() async throws -> [SyImConversation] {
         try await client.conversations()
+    }
+
+    /// 全部会话未读数之和。登录后有效。
+    public func getTotalUnreadCount() async throws -> Int {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.totalUnreadCount()
+    }
+
+    /// 将会话标为已读。
+    /// 单聊同时向对方发送已读回执（对方 `onRecvC2CReadReceipt`）；群聊只清除本端未读。
+    public func markConversationAsRead(conversationId: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        let id = conversationId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { throw SyImError.invalidArgument("conversationId required") }
+        try await client.markConversationAsRead(conversationId: id)
+    }
+
+    /// 收到的好友申请（待处理与已处理）。需要 OpenIMSDK（默认 CocoaPods 路径）。
+    public func getReceivedFriendApplications() async throws -> [SyImFriendApplication] {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.receivedFriendApplications()
+    }
+
+    /// 同意好友申请。`userId` 为申请方 OpenIM 用户 ID。
+    public func acceptFriendApplication(userId: String, handleMsg: String = "") async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        let uid = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uid.isEmpty else { throw SyImError.invalidArgument("userId required") }
+        try await client.acceptFriendApplication(userId: uid, handleMsg: handleMsg)
+    }
+
+    /// 拒绝好友申请。
+    public func refuseFriendApplication(userId: String, handleMsg: String = "") async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        let uid = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uid.isEmpty else { throw SyImError.invalidArgument("userId required") }
+        try await client.refuseFriendApplication(userId: uid, handleMsg: handleMsg)
+    }
+
+    /// 当前账号已加入的群（OpenIM 本地列表）。
+    public func getJoinedGroups() async throws -> [SyImGroup] {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.joinedGroups()
+    }
+
+    /// 邀请用户入群。
+    public func inviteToGroup(groupId: String, userIds: [String], reason: String = "") async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.inviteUsers(groupId: try requireId(groupId, name: "groupId"), userIds: userIds, reason: reason)
+    }
+
+    /// 将成员移出群。
+    public func kickFromGroup(groupId: String, userIds: [String], reason: String = "") async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.kickGroupMembers(groupId: try requireId(groupId, name: "groupId"), userIds: userIds, reason: reason)
+    }
+
+    /// 退出群。
+    public func quitGroup(groupId: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.quitGroup(groupId: try requireId(groupId, name: "groupId"))
+    }
+
+    /// 解散群（群主）。
+    public func dismissGroup(groupId: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.dismissGroup(groupId: try requireId(groupId, name: "groupId"))
+    }
+
+    /// 发起好友申请。控制面 `POST /api/user/im/friends/add`，需先 `setControlPlaneAccessToken`。
+    public func addFriend(fromUserId: String, toUserId: String, reqMsg: String = "") async throws {
+        _ = try await controlPlaneObject(path: "/api/user/im/friends/add", body: [
+            "fromUserId": try requireId(fromUserId, name: "fromUserId"),
+            "toUserId": try requireId(toUserId, name: "toUserId"),
+            "reqMsg": reqMsg,
+        ])
+    }
+
+    /// 好友列表。控制面 `POST /api/user/im/friends/list`。
+    public func listFriends(ownerUserId: String) async throws -> [String: Any] {
+        try await controlPlaneObject(path: "/api/user/im/friends/list", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"),
+        ])
+    }
+
+    /// 建群。控制面 `POST /api/user/im/groups/create`。返回值为响应里的 `data`（字典；若是数组则包在 `list` 下）。
+    @discardableResult
+    public func createGroup(
+        ownerUserId: String,
+        groupName: String,
+        memberUserIds: [String] = []
+    ) async throws -> [String: Any] {
+        let name = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw SyImError.invalidArgument("groupName required") }
+        return try await controlPlaneObject(path: "/api/user/im/groups/create", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"),
+            "groupName": name,
+            "memberUserIds": memberUserIds,
+        ])
+    }
+
+    /// 群列表。控制面 `POST /api/user/im/groups/list`。
+    public func listGroups(ownerUserId: String) async throws -> [String: Any] {
+        try await controlPlaneObject(path: "/api/user/im/groups/list", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"),
+        ])
+    }
+
+    /// 历史消息。控制面 `POST /api/user/im/messages/history`。
+    public func messageHistory(
+        userId: String,
+        conversationId: String? = nil,
+        peerUserId: String? = nil,
+        groupId: String? = nil,
+        count: Int = 20
+    ) async throws -> [String: Any] {
+        var body: [String: Any] = ["userId": try requireId(userId, name: "userId"), "count": count]
+        if let conversationId, !conversationId.isEmpty { body["conversationId"] = conversationId }
+        if let peerUserId, !peerUserId.isEmpty { body["peerUserId"] = peerUserId }
+        if let groupId, !groupId.isEmpty { body["groupId"] = groupId }
+        return try await controlPlaneObject(path: "/api/user/im/messages/history", body: body)
+    }
+
+    /// 撤回。控制面 `POST /api/user/im/messages/revoke`（`conversationId` + `seq`）。
+    public func revokeMessage(userId: String, conversationId: String, seq: Int) async throws {
+        _ = try await controlPlaneObject(path: "/api/user/im/messages/revoke", body: [
+            "userId": try requireId(userId, name: "userId"),
+            "conversationId": try requireId(conversationId, name: "conversationId"),
+            "seq": seq,
+        ])
     }
 
     /// 控制面拉取 IM Token：优先 User JWT → POST /api/user/im/token；否则需自行带 AppSecret 调 server 路径。
@@ -245,6 +376,33 @@ public final class SyImEngine {
 
     /// 控制面 REST：friends/groups/send/history/revoke（需 User JWT）。实时收发仍走 OpenIM 客户端。
     public func controlPlanePost(path: String, userJwt: String, body: [String: Any]) async throws -> [String: Any] {
+        let data = try await controlPlaneData(path: path, userJwt: userJwt, body: body)
+        return data as? [String: Any] ?? [:]
+    }
+
+    private func requireId(_ value: String, name: String) throws -> String {
+        let id = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { throw SyImError.invalidArgument("\(name) required") }
+        return id
+    }
+
+    private func requireControlPlaneJwt() throws -> String {
+        let jwt = controlPlaneAccessToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !jwt.isEmpty else {
+            throw SyImError.invalidArgument("call setControlPlaneAccessToken with the user JWT first")
+        }
+        return jwt
+    }
+
+    private func controlPlaneObject(path: String, body: [String: Any]) async throws -> [String: Any] {
+        let data = try await controlPlaneData(path: path, userJwt: try requireControlPlaneJwt(), body: body)
+        if let dict = data as? [String: Any] { return dict }
+        if let list = data as? [Any] { return ["list": list] }
+        if data is NSNull { return [:] }
+        return [:]
+    }
+
+    private func controlPlaneData(path: String, userJwt: String, body: [String: Any]) async throws -> Any {
         let base = apiBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let p = path.hasPrefix("/") ? path : "/\(path)"
         guard let url = URL(string: "\(base)\(p)") else {
@@ -265,9 +423,30 @@ public final class SyImEngine {
         guard code >= 200 && code < 300, biz == 0 else {
             throw SyImError.openImApi(json["msg"] as? String ?? "controlPlane HTTP \(code)")
         }
-        return (json["data"] as? [String: Any]) ?? [:]
+        return json["data"] ?? [:]
     }
 
+}
+
+extension SyImEngine: OpenImEventSink {
+    func imOnConnecting() { eventListener?.onConnecting() }
+    func imOnConnectSuccess() { eventListener?.onConnectSuccess() }
+    func imOnConnectFailed(code: Int, error: String) { eventListener?.onConnectFailed(code: code, error: error) }
+    func imOnKickedOffline() { eventListener?.onKickedOffline() }
+    func imOnUserTokenExpired() { eventListener?.onUserTokenExpired() }
+    func imOnRecvNewMessage(msgId: String, fromUserId: String, groupId: String?, text: String?) {
+        eventListener?.onRecvNewMessage(msgId: msgId, fromUserId: fromUserId, groupId: groupId, text: text)
+    }
+    func imOnTotalUnreadCountChanged(count: Int) { eventListener?.onTotalUnreadCountChanged(count: count) }
+    func imOnRecvC2CReadReceipt(userId: String, msgIds: [String]) {
+        eventListener?.onRecvC2CReadReceipt(userId: userId, msgIds: msgIds)
+    }
+    func imOnRecvGroupReadReceipt(groupId: String, msgIds: [String]) {
+        eventListener?.onRecvGroupReadReceipt(groupId: groupId, msgIds: msgIds)
+    }
+    func imOnRecvFriendApplication(fromUserId: String, reqMsg: String?) {
+        eventListener?.onRecvFriendApplication(fromUserId: fromUserId, reqMsg: reqMsg)
+    }
 }
 
 

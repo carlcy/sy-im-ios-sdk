@@ -55,3 +55,49 @@ public struct SyImChatMessage: Equatable, Sendable {
         self.timestamp = timestamp
     }
 }
+
+/// 收到的好友申请。`handleResult`：-1 已拒绝，0 待处理，1 已同意。
+public struct SyImFriendApplication: Equatable, Sendable {
+    public var fromUserId: String
+    public var fromNickname: String?
+    public var toUserId: String?
+    public var reqMsg: String?
+    public var handleResult: Int
+    public var handleMsg: String?
+
+    public init(
+        fromUserId: String,
+        fromNickname: String? = nil,
+        toUserId: String? = nil,
+        reqMsg: String? = nil,
+        handleResult: Int = 0,
+        handleMsg: String? = nil
+    ) {
+        self.fromUserId = fromUserId
+        self.fromNickname = fromNickname
+        self.toUserId = toUserId
+        self.reqMsg = reqMsg
+        self.handleResult = handleResult
+        self.handleMsg = handleMsg
+    }
+}
+
+/// 已加入的群。
+public struct SyImGroup: Equatable, Sendable {
+    public var groupId: String
+    public var groupName: String?
+    public var memberCount: Int
+    public var ownerUserId: String?
+
+    public init(
+        groupId: String,
+        groupName: String? = nil,
+        memberCount: Int = 0,
+        ownerUserId: String? = nil
+    ) {
+        self.groupId = groupId
+        self.groupName = groupName
+        self.memberCount = memberCount
+        self.ownerUserId = ownerUserId
+    }
+}

@@ -8,6 +8,14 @@ public protocol ImEventListener: AnyObject {
     func onKickedOffline()
     func onUserTokenExpired()
     func onRecvNewMessage(msgId: String, fromUserId: String, groupId: String?, text: String?)
+    /// OpenIM 会话总未读数变化。
+    func onTotalUnreadCountChanged(count: Int)
+    /// 单聊已读回执。`msgIds` 为对方已读的 clientMsgID。
+    func onRecvC2CReadReceipt(userId: String, msgIds: [String])
+    /// 群聊已读回执。
+    func onRecvGroupReadReceipt(groupId: String, msgIds: [String])
+    /// 收到新的好友申请。
+    func onRecvFriendApplication(fromUserId: String, reqMsg: String?)
 }
 
 public extension ImEventListener {
@@ -17,4 +25,8 @@ public extension ImEventListener {
     func onKickedOffline() {}
     func onUserTokenExpired() {}
     func onRecvNewMessage(msgId: String, fromUserId: String, groupId: String?, text: String?) {}
+    func onTotalUnreadCountChanged(count: Int) {}
+    func onRecvC2CReadReceipt(userId: String, msgIds: [String]) {}
+    func onRecvGroupReadReceipt(groupId: String, msgIds: [String]) {}
+    func onRecvFriendApplication(fromUserId: String, reqMsg: String?) {}
 }

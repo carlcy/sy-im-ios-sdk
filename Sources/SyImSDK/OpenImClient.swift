@@ -7,13 +7,93 @@ import UIKit
 
 private let log = OSLog(subsystem: "com.sy.im.sdk", category: "OpenImClient")
 
+/// Events forwarded from an OpenIM client into `SyImEngine`.
+protocol OpenImEventSink: AnyObject {
+    func imOnConnecting()
+    func imOnConnectSuccess()
+    func imOnConnectFailed(code: Int, error: String)
+    func imOnKickedOffline()
+    func imOnUserTokenExpired()
+    func imOnRecvNewMessage(msgId: String, fromUserId: String, groupId: String?, text: String?)
+    func imOnTotalUnreadCountChanged(count: Int)
+    func imOnRecvC2CReadReceipt(userId: String, msgIds: [String])
+    func imOnRecvGroupReadReceipt(groupId: String, msgIds: [String])
+    func imOnRecvFriendApplication(fromUserId: String, reqMsg: String?)
+}
+
 /// Backend used by `SyImEngine`.
 protocol OpenImClient: AnyObject {
+    func setEventSink(_ sink: OpenImEventSink?)
     func initSdk(apiAddr: String, wsAddr: String) async throws
     func login(userId: String, token: String) async throws
     func logout() async throws
     func sendText(userId: String?, groupId: String?, text: String) async throws -> String
     func conversations() async throws -> [SyImConversation]
+    func totalUnreadCount() async throws -> Int
+    func markConversationAsRead(conversationId: String) async throws
+    func receivedFriendApplications() async throws -> [SyImFriendApplication]
+    func acceptFriendApplication(userId: String, handleMsg: String) async throws
+    func refuseFriendApplication(userId: String, handleMsg: String) async throws
+    func joinedGroups() async throws -> [SyImGroup]
+    func inviteUsers(groupId: String, userIds: [String], reason: String) async throws
+    func kickGroupMembers(groupId: String, userIds: [String], reason: String) async throws
+    func quitGroup(groupId: String) async throws
+    func dismissGroup(groupId: String) async throws
+}
+
+extension OpenImClient {
+    func setEventSink(_ sink: OpenImEventSink?) {}
+
+    func totalUnreadCount() async throws -> Int {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("getTotalUnreadCount"))
+    }
+
+    func markConversationAsRead(conversationId: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("markConversationAsRead"))
+    }
+
+    func receivedFriendApplications() async throws -> [SyImFriendApplication] {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("getReceivedFriendApplications"))
+    }
+
+    func acceptFriendApplication(userId: String, handleMsg: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("acceptFriendApplication"))
+    }
+
+    func refuseFriendApplication(userId: String, handleMsg: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("refuseFriendApplication"))
+    }
+
+    func joinedGroups() async throws -> [SyImGroup] {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("getJoinedGroups"))
+    }
+
+    func inviteUsers(groupId: String, userIds: [String], reason: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("inviteToGroup"))
+    }
+
+    func kickGroupMembers(groupId: String, userIds: [String], reason: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("kickFromGroup"))
+    }
+
+    func quitGroup(groupId: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("quitGroup"))
+    }
+
+    func dismissGroup(groupId: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("dismissGroup"))
+    }
+}
+
+enum OpenImClientSupport {
+    static func sdkRequired(_ op: String) -> String {
+        "\(op) requires CocoaPods OpenIMSDK (pod 'SyImSDK'). " +
+        "HttpWs cannot send this call. Pass backend: .openImSdk (the default)."
+    }
+
+    static func failure(_ op: String, code: Int, message: String?) -> SyImError {
+        .openImApi("\(op) code=\(code) \(message ?? "")")
+    }
 }
 
 // MARK: - Mock (offline / empty addresses only)
@@ -23,6 +103,13 @@ final class MockOpenImClient: OpenImClient {
     private var loggedIn = false
     private var userId: String?
     private var inbox: [SyImConversation] = []
+    private var applications: [SyImFriendApplication] = []
+    private var groups: [SyImGroup] = []
+    private weak var eventSink: OpenImEventSink?
+
+    func setEventSink(_ sink: OpenImEventSink?) {
+        eventSink = sink
+    }
 
     func initSdk(apiAddr: String, wsAddr: String) async throws {
         os_log("MockOpenImClient initSDK apiAddr=%{public}@ wsAddr=%{public}@", log: log, type: .info, apiAddr, wsAddr)
@@ -73,6 +160,74 @@ final class MockOpenImClient: OpenImClient {
     }
 
     func conversations() async throws -> [SyImConversation] { inbox }
+
+    func totalUnreadCount() async throws -> Int {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return inbox.reduce(0) { $0 + $1.unreadCount }
+    }
+
+    func markConversationAsRead(conversationId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        if let idx = inbox.firstIndex(where: { $0.conversationId == conversationId }) {
+            inbox[idx].unreadCount = 0
+        }
+        eventSink?.imOnTotalUnreadCountChanged(count: inbox.reduce(0) { $0 + $1.unreadCount })
+    }
+
+    func receivedFriendApplications() async throws -> [SyImFriendApplication] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return applications
+    }
+
+    func acceptFriendApplication(userId: String, handleMsg: String) async throws {
+        try updateApplication(userId: userId, handleMsg: handleMsg, result: 1)
+    }
+
+    func refuseFriendApplication(userId: String, handleMsg: String) async throws {
+        try updateApplication(userId: userId, handleMsg: handleMsg, result: -1)
+    }
+
+    func joinedGroups() async throws -> [SyImGroup] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return groups
+    }
+
+    func inviteUsers(groupId: String, userIds: [String], reason: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard groups.contains(where: { $0.groupId == groupId }) else {
+            throw SyImError.invalidArgument("unknown group \(groupId)")
+        }
+        _ = userIds
+        _ = reason
+    }
+
+    func kickGroupMembers(groupId: String, userIds: [String], reason: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard groups.contains(where: { $0.groupId == groupId }) else {
+            throw SyImError.invalidArgument("unknown group \(groupId)")
+        }
+        _ = userIds
+        _ = reason
+    }
+
+    func quitGroup(groupId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        groups.removeAll { $0.groupId == groupId }
+    }
+
+    func dismissGroup(groupId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        groups.removeAll { $0.groupId == groupId }
+    }
+
+    private func updateApplication(userId: String, handleMsg: String, result: Int) throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard let idx = applications.firstIndex(where: { $0.fromUserId == userId && $0.handleResult == 0 }) else {
+            throw SyImError.invalidArgument("no pending friend application from \(userId)")
+        }
+        applications[idx].handleResult = result
+        applications[idx].handleMsg = handleMsg
+    }
 }
 
 // MARK: - Real HTTP + WebSocket minimal OpenIM client
@@ -287,6 +442,12 @@ final class HttpWsOpenImClient: NSObject, OpenImClient, URLSessionWebSocketDeleg
         }
     }
 
+    /// Sum of conversation unread counts. HttpWs has no read-receipt frame.
+    func totalUnreadCount() async throws -> Int {
+        let list = try await conversations()
+        return list.reduce(0) { $0 + $1.unreadCount }
+    }
+
     // MARK: - Helpers
 
     private func rememberOutgoing(userId: String?, groupId: String?, text: String) {
@@ -407,6 +568,11 @@ final class RealOpenImClient: NSObject, OpenImClient {
     private var apiAddr: String = ""
     private var wsAddr: String = ""
     private var loggedIn = false
+    private weak var eventSink: OpenImEventSink?
+
+    func setEventSink(_ sink: OpenImEventSink?) {
+        eventSink = sink
+    }
 
     func initSdk(apiAddr: String, wsAddr: String) async throws {
         self.apiAddr = apiAddr.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -417,19 +583,71 @@ final class RealOpenImClient: NSObject, OpenImClient {
         config.logLevel = 5
         // objectStorage lives on OIMManager (not OIMInitConfig) in OpenIMSDK 3.8.3+hotfix.3.1
         OIMManager.manager.objectStorage = "minio"
+        wireListeners()
         let ok = OIMManager.manager.initSDK(
             with: config,
-            onConnecting: {},
-            onConnectFailure: { code, msg in
-                os_log("OpenIMSDK connectFailure code=%{public}ld %{public}@", log: log, type: .error, code, msg ?? "")
+            onConnecting: { [weak self] in
+                self?.eventSink?.imOnConnecting()
             },
-            onConnectSuccess: {},
-            onKickedOffline: {},
-            onUserTokenExpired: {},
-            onUserTokenInvalid: { _ in }
+            onConnectFailure: { [weak self] code, msg in
+                os_log("OpenIMSDK connectFailure code=%{public}ld %{public}@", log: log, type: .error, code, msg ?? "")
+                self?.eventSink?.imOnConnectFailed(code: Int(code), error: msg ?? "")
+            },
+            onConnectSuccess: { [weak self] in
+                self?.eventSink?.imOnConnectSuccess()
+            },
+            onKickedOffline: { [weak self] in
+                self?.eventSink?.imOnKickedOffline()
+            },
+            onUserTokenExpired: { [weak self] in
+                self?.eventSink?.imOnUserTokenExpired()
+            },
+            onUserTokenInvalid: { [weak self] err in
+                self?.eventSink?.imOnConnectFailed(code: -1, error: err ?? "user token invalid")
+            }
         )
         if !ok {
             throw SyImError.openImApi("OIMManager.initSDKWithConfig returned false")
+        }
+    }
+
+    /// Message / unread / friend callbacks. `login` calls `setListener`, which registers them.
+    private func wireListeners() {
+        let cb = OIMManager.callbacker
+        cb.onRecvNewMessage = { [weak self] msg in
+            guard let msg else { return }
+            let groupId = (msg.groupID?.isEmpty == false) ? msg.groupID : nil
+            self?.eventSink?.imOnRecvNewMessage(
+                msgId: msg.clientMsgID ?? "",
+                fromUserId: msg.sendID ?? "",
+                groupId: groupId,
+                text: msg.textElem?.content
+            )
+        }
+        cb.onRecvC2CReadReceipt = { [weak self] list in
+            for item in list ?? [] {
+                self?.eventSink?.imOnRecvC2CReadReceipt(
+                    userId: item.userID ?? "",
+                    msgIds: item.msgIDList ?? []
+                )
+            }
+        }
+        cb.onRecvGroupReadReceipt = { [weak self] list in
+            for item in list ?? [] {
+                self?.eventSink?.imOnRecvGroupReadReceipt(
+                    groupId: item.groupID ?? "",
+                    msgIds: item.msgIDList ?? []
+                )
+            }
+        }
+        cb.onTotalUnreadMessageCountChanged = { [weak self] count in
+            self?.eventSink?.imOnTotalUnreadCountChanged(count: Int(count))
+        }
+        cb.onFriendApplicationAdded = { [weak self] application in
+            self?.eventSink?.imOnRecvFriendApplication(
+                fromUserId: application?.fromUserID ?? "",
+                reqMsg: application?.reqMsg
+            )
         }
     }
 
@@ -494,6 +712,136 @@ final class RealOpenImClient: NSObject, OpenImClient {
                 cont.resume(throwing: SyImError.openImApi("conversations code=\(code) \(msg ?? "")"))
             })
         }
+    }
+
+    func totalUnreadCount() async throws -> Int {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Int, Error>) in
+            OIMManager.manager.getTotalUnreadMsgCountWith(onSuccess: { number in
+                cont.resume(returning: Int(number))
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("getTotalUnreadCount", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func markConversationAsRead(conversationId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            OIMManager.manager.markConversationMessage(asRead: conversationId, onSuccess: { _ in
+                cont.resume()
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("markConversationAsRead", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func receivedFriendApplications() async throws -> [SyImFriendApplication] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SyImFriendApplication], Error>) in
+            OIMManager.manager.getFriendApplicationListAsRecipientWith(onSuccess: { list in
+                let mapped = (list ?? []).map { item in
+                    SyImFriendApplication(
+                        fromUserId: item.fromUserID ?? "",
+                        fromNickname: item.fromNickname,
+                        toUserId: item.toUserID,
+                        reqMsg: item.reqMsg,
+                        handleResult: item.handleResult.rawValue,
+                        handleMsg: item.handleMsg
+                    )
+                }
+                cont.resume(returning: mapped)
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("getReceivedFriendApplications", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func acceptFriendApplication(userId: String, handleMsg: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            OIMManager.manager.acceptFriendApplication(userId, handleMsg: handleMsg, onSuccess: { _ in
+                cont.resume()
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("acceptFriendApplication", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func refuseFriendApplication(userId: String, handleMsg: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            OIMManager.manager.refuseFriendApplication(userId, handleMsg: handleMsg, onSuccess: { _ in
+                cont.resume()
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("refuseFriendApplication", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func joinedGroups() async throws -> [SyImGroup] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SyImGroup], Error>) in
+            OIMManager.manager.getJoinedGroupListWith(onSuccess: { list in
+                let mapped = (list ?? []).map { Self.mapGroup($0) }
+                cont.resume(returning: mapped)
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("getJoinedGroups", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func inviteUsers(groupId: String, userIds: [String], reason: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            OIMManager.manager.inviteUser(toGroup: groupId, reason: reason, usersID: userIds, onSuccess: { _ in
+                cont.resume()
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("inviteToGroup", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func kickGroupMembers(groupId: String, userIds: [String], reason: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            OIMManager.manager.kickGroupMember(groupId, reason: reason, usersID: userIds, onSuccess: { _ in
+                cont.resume()
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("kickFromGroup", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func quitGroup(groupId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            OIMManager.manager.quitGroup(groupId, onSuccess: { _ in
+                cont.resume()
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("quitGroup", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func dismissGroup(groupId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            OIMManager.manager.dismissGroup(groupId, onSuccess: { _ in
+                cont.resume()
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("dismissGroup", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    private static func mapGroup(_ info: OIMGroupInfo) -> SyImGroup {
+        SyImGroup(
+            groupId: info.groupID ?? "",
+            groupName: info.groupName,
+            memberCount: info.memberCount,
+            ownerUserId: info.ownerUserID
+        )
     }
 }
 #endif

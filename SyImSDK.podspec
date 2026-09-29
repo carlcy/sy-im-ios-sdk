@@ -9,6 +9,7 @@ Pod::Spec.new do |s|
     OpenIM iOS publishes CocoaPods only (OpenIMSDKCore is a vendored xcframework)
     and has no Swift Package, so SPM cannot pull the production dependency.
     HttpWsOpenImClient remains an explicit fallback (`backend: .httpWs`).
+    `SyImSDKVersion.current` is 0.5.0, the same value as this podspec.
   DESC
   s.homepage         = 'https://github.com/carlcy/sy-im-ios-sdk'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }

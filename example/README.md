@@ -28,7 +28,7 @@ open SyImSDKExample.xcworkspace
 2. **初始化**（默认 `backend: .openImSdk`）。
 3. **登录**。OpenIM 用户 ID 为 `{appId}_{uid}`。
 4. **发送文本**。对端 ID 同样用 OpenIM 用户 ID。
-5. **刷新会话** 会带上总未读数。
+5. **会话** Tab 的角标是总未读（`tabBarItem.badgeValue`）。点一行会标已读，角标立刻变。版本号是 0.5.0。
 
 自签证书：把 `https://47.105.48.196/downloads/sy-rtc-server-ca.crt` 装进设备信任区。
 

@@ -1,5 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(os.log)
 import os.log
+#endif
 
 private let log = OSLog(subsystem: "com.sy.im.sdk", category: "SyImEngine")
 
@@ -40,6 +45,16 @@ public final class SyImEngine {
     private weak var eventListener: ImEventListener?
     private let client: OpenImClient
     private static var shared: SyImEngine?
+
+    /// 总未读或单个会话未读变化。OpenIM 会话监听，以及 `markConversationAsRead` 成功后立刻回调。
+    /// 回调线程不保证是主线程，刷新 UI 请切回主线程。
+    public var onUnreadChanged: ((SyImUnreadUpdate) -> Void)?
+
+    private let unreadLock = NSLock()
+    private var unreadByConversation: [String: Int] = [:]
+    private var cachedTotalUnread: Int = 0
+    /// 服务端总未读里，还没落到 `unreadByConversation` 的部分，避免总未读和单会话回调互相加两次。
+    private var untrackedUnread: Int = 0
 
     private init(
         appId: String,
@@ -196,6 +211,7 @@ public final class SyImEngine {
         try await client.logout()
         isLoggedIn = false
         currentUserId = nil
+        publish(resetUnreadCache())
     }
 
     /// 发送文本。单聊传 `userId`，群聊传 `groupId`（二选一）。
@@ -218,23 +234,164 @@ public final class SyImEngine {
     }
 
     /// 会话列表。每条会话的 `unreadCount` 是该会话未读数。
+    /// 只写入未读缓存，不回调 `onUnreadChanged`，避免刷新列表时循环。
     public func getConversations() async throws -> [SyImConversation] {
-        try await client.conversations()
+        let list = try await client.conversations()
+        seedUnreadCache(list)
+        return list
     }
 
-    /// 全部会话未读数之和。登录后有效。
+    /// 全部会话未读数之和。登录后有效。写入缓存，不额外发未读回调。
     public func getTotalUnreadCount() async throws -> Int {
         guard isLoggedIn else { throw SyImError.notLoggedIn }
-        return try await client.totalUnreadCount()
+        let count = try await client.totalUnreadCount()
+        _ = applyServerTotal(count)
+        return count
     }
 
     /// 将会话标为已读。
     /// 单聊同时向对方发送已读回执（对方 `onRecvC2CReadReceipt`）；群聊只清除本端未读。
+    /// 成功后立刻回调未读变化（该会话为 0，总未读扣掉原未读），再用总未读接口校正。
     public func markConversationAsRead(conversationId: String) async throws {
         guard isLoggedIn else { throw SyImError.notLoggedIn }
         let id = conversationId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { throw SyImError.invalidArgument("conversationId required") }
         try await client.markConversationAsRead(conversationId: id)
+        publish(noteConversationUnread(conversationId: id, unreadCount: 0))
+        if let confirmed = try? await client.totalUnreadCount() {
+            publish(applyServerTotal(confirmed))
+        }
+    }
+
+    /// 撤回一条客户端消息。`clientMsgId` 是 OpenIM clientMsgID。
+    /// 控制面按 seq 撤回仍用 `revokeMessage(userId:conversationId:seq:)`。
+    public func recallMessage(conversationId: String, clientMsgId: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.recall(
+            conversationId: try requireId(conversationId, name: "conversationId"),
+            clientMsgId: try requireId(clientMsgId, name: "clientMsgId")
+        )
+    }
+
+    /// 群 @ 文本。`atAll == true` 时忽略 `atUserIds`。
+    @discardableResult
+    public func sendAtTextMessage(
+        groupId: String,
+        text: String,
+        atUserIds: [String] = [],
+        atAll: Bool = false
+    ) async throws -> String {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { throw SyImError.invalidArgument("text required") }
+        return try await client.sendAtText(
+            groupId: try requireId(groupId, name: "groupId"),
+            text: body,
+            atUserIds: atUserIds,
+            atAll: atAll
+        )
+    }
+
+    /// 自定义消息。`data` 为业务 JSON/文本，`description` / `ext` 可选。
+    @discardableResult
+    public func sendCustomMessage(
+        userId: String? = nil,
+        groupId: String? = nil,
+        data: String,
+        description: String? = nil,
+        ext: String? = nil
+    ) async throws -> String {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        guard (userId?.isEmpty == false) || (groupId?.isEmpty == false) else {
+            throw SyImError.invalidArgument("provide userId or groupId")
+        }
+        let payload = data.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !payload.isEmpty else { throw SyImError.invalidArgument("data required") }
+        return try await client.sendCustom(userId: userId, groupId: groupId, data: payload, description: description, ext: ext)
+    }
+
+    public func searchConversations(keyword: String) async throws -> [SyImConversation] {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.searchConversations(keyword: try requireId(keyword, name: "keyword"))
+    }
+
+    public func searchMessages(keyword: String, conversationId: String? = nil) async throws -> [SyImSearchHit] {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.searchMessages(
+            keyword: try requireId(keyword, name: "keyword"),
+            conversationId: conversationId
+        )
+    }
+
+    public func searchUsers(keyword: String) async throws -> [SyImUserBrief] {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.searchUsers(keyword: try requireId(keyword, name: "keyword"))
+    }
+
+    public func pinConversation(conversationId: String, isPinned: Bool) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.pinConversation(
+            conversationId: try requireId(conversationId, name: "conversationId"),
+            isPinned: isPinned
+        )
+    }
+
+    public func setConversationDraft(conversationId: String, draft: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.setDraft(
+            conversationId: try requireId(conversationId, name: "conversationId"),
+            draft: draft
+        )
+    }
+
+    /// 免打扰。`notNotify` 在线接收但不通知，`notReceive` 不接收。
+    public func setConversationReceiveOption(conversationId: String, option: SyImReceiveOption) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.setReceiveOption(
+            conversationId: try requireId(conversationId, name: "conversationId"),
+            option: option.rawValue
+        )
+    }
+
+    /// 发送正在输入。本 OpenIM 版本只保证发出；对端输入状态回调在 3.8.3+hotfix.3.1 里是空实现，不会回调到本端。
+    public func sendTyping(conversationId: String, focus: Bool) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.sendTyping(
+            conversationId: try requireId(conversationId, name: "conversationId"),
+            focus: focus
+        )
+    }
+
+    /// 自己的自定义资料，写入 OpenIM 用户 `ex`。
+    public func setSelfCustomInfo(_ ex: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.setSelfEx(ex)
+    }
+
+    public func getSelfCustomInfo() async throws -> String? {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.selfEx()
+    }
+
+    /// 群自定义资料，写入 OpenIM 群 `ex`。先读再写，避免清掉其他字段。
+    public func setGroupCustomInfo(groupId: String, ex: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.setGroupEx(groupId: try requireId(groupId, name: "groupId"), ex: ex)
+    }
+
+    public func addToBlacklist(userId: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.addBlacklist(userId: try requireId(userId, name: "userId"))
+    }
+
+    public func removeFromBlacklist(userId: String) async throws {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        try await client.removeBlacklist(userId: try requireId(userId, name: "userId"))
+    }
+
+    public func getBlacklist() async throws -> [SyImUserBrief] {
+        guard isLoggedIn else { throw SyImError.notLoggedIn }
+        return try await client.blacklist()
     }
 
     /// 收到的好友申请（待处理与已处理）。需要 OpenIMSDK（默认 CocoaPods 路径）。
@@ -380,6 +537,76 @@ public final class SyImEngine {
         return data as? [String: Any] ?? [:]
     }
 
+    private func seedUnreadCache(_ conversations: [SyImConversation]) {
+        unreadLock.lock()
+        defer { unreadLock.unlock() }
+        var next: [String: Int] = [:]
+        for item in conversations {
+            next[item.conversationId] = item.unreadCount
+        }
+        unreadByConversation = next
+        let known = next.values.reduce(0, +)
+        if cachedTotalUnread > known {
+            untrackedUnread = cachedTotalUnread - known
+        } else {
+            untrackedUnread = 0
+            cachedTotalUnread = known
+        }
+    }
+
+    private func noteConversationUnread(conversationId: String, unreadCount: Int) -> SyImUnreadUpdate {
+        unreadLock.lock()
+        defer { unreadLock.unlock() }
+        let old = unreadByConversation[conversationId] ?? 0
+        let knownBefore = unreadByConversation.values.reduce(0, +)
+        let delta = unreadCount - old
+        unreadByConversation[conversationId] = unreadCount
+        let knownAfter = knownBefore + delta
+        if delta > 0 {
+            // 总未读回调若先到，多出来的部分在 untracked，这里扣掉，避免加两次。
+            untrackedUnread = max(0, untrackedUnread - delta)
+            cachedTotalUnread = max(0, knownAfter + untrackedUnread)
+        } else if delta < 0 && cachedTotalUnread < knownBefore + untrackedUnread {
+            // 总未读已经低于会话未读之和，说明服务端总数先到了，不要再减一次。
+            untrackedUnread = max(0, cachedTotalUnread - knownAfter)
+        } else if delta < 0 {
+            cachedTotalUnread = max(0, knownAfter + untrackedUnread)
+        }
+        return SyImUnreadUpdate(
+            totalUnreadCount: cachedTotalUnread,
+            conversationId: conversationId,
+            conversationUnreadCount: unreadCount
+        )
+    }
+
+    private func applyServerTotal(_ count: Int) -> SyImUnreadUpdate {
+        unreadLock.lock()
+        defer { unreadLock.unlock() }
+        let known = unreadByConversation.values.reduce(0, +)
+        let total = max(0, count)
+        untrackedUnread = max(0, total - known)
+        cachedTotalUnread = total
+        return SyImUnreadUpdate(totalUnreadCount: total)
+    }
+
+    private func resetUnreadCache() -> SyImUnreadUpdate {
+        unreadLock.lock()
+        defer { unreadLock.unlock() }
+        unreadByConversation.removeAll()
+        untrackedUnread = 0
+        cachedTotalUnread = 0
+        return SyImUnreadUpdate(totalUnreadCount: 0)
+    }
+
+    private func publish(_ update: SyImUnreadUpdate) {
+        eventListener?.onUnreadChanged(update)
+        eventListener?.onTotalUnreadCountChanged(count: update.totalUnreadCount)
+        if let id = update.conversationId, let count = update.conversationUnreadCount {
+            eventListener?.onConversationUnreadChanged(conversationId: id, unreadCount: count)
+        }
+        onUnreadChanged?(update)
+    }
+
     private func requireId(_ value: String, name: String) throws -> String {
         let id = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { throw SyImError.invalidArgument("\(name) required") }
@@ -437,7 +664,15 @@ extension SyImEngine: OpenImEventSink {
     func imOnRecvNewMessage(msgId: String, fromUserId: String, groupId: String?, text: String?) {
         eventListener?.onRecvNewMessage(msgId: msgId, fromUserId: fromUserId, groupId: groupId, text: text)
     }
-    func imOnTotalUnreadCountChanged(count: Int) { eventListener?.onTotalUnreadCountChanged(count: count) }
+    func imOnTotalUnreadCountChanged(count: Int) {
+        publish(applyServerTotal(count))
+    }
+    func imOnConversationUnreadChanged(conversationId: String, unreadCount: Int) {
+        publish(noteConversationUnread(conversationId: conversationId, unreadCount: unreadCount))
+    }
+    func imOnMessageRecalled(clientMsgId: String, revokerUserId: String) {
+        eventListener?.onMessageRecalled(clientMsgId: clientMsgId, revokerUserId: revokerUserId)
+    }
     func imOnRecvC2CReadReceipt(userId: String, msgIds: [String]) {
         eventListener?.onRecvC2CReadReceipt(userId: userId, msgIds: msgIds)
     }

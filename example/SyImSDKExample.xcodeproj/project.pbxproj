@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000011 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* AppDelegate.swift */; };
 		A10000000000000000000012 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* ViewController.swift */; };
+		A10000000000000000000013 /* ConversationListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* ConversationListViewController.swift */; };
 		C088D1C239CF3BE4D7E87430 /* Pods_SyImSDKExample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 92B2AC1B073CE08BA390AF71 /* Pods_SyImSDKExample.framework */; };
 /* End PBXBuildFile section */
 
@@ -16,6 +17,7 @@
 		92B2AC1B073CE08BA390AF71 /* Pods_SyImSDKExample.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SyImSDKExample.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A10000000000000000000002 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		A10000000000000000000004 /* ConversationListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListViewController.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000031 /* SyImSDKExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SyImSDKExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAD192795D1ECE24581D5121 /* Pods-SyImSDKExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SyImSDKExample.release.xcconfig"; path = "Target Support Files/Pods-SyImSDKExample/Pods-SyImSDKExample.release.xcconfig"; sourceTree = "<group>"; };
@@ -64,6 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000001 /* AppDelegate.swift */,
+				A10000000000000000000004 /* ConversationListViewController.swift */,
 				A10000000000000000000002 /* ViewController.swift */,
 				A10000000000000000000003 /* Info.plist */,
 			);
@@ -193,6 +196,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000011 /* AppDelegate.swift in Sources */,
+				A10000000000000000000013 /* ConversationListViewController.swift in Sources */,
 				A10000000000000000000012 /* ViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -253,7 +257,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.sy.im.example;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -279,7 +283,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.sy.im.example;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

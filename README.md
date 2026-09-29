@@ -112,7 +112,9 @@ pod install
 open SyImSDKExample.xcworkspace
 ```
 
-界面流程：填写 User JWT → 获取 IM Token → 初始化 → 登录 → 发送文本。刷新会话时会打印总未读数。
+界面有两个 Tab。**会话** Tab 把总未读显示在 `tabBarItem.badgeValue`（0 不显示，大于 99 显示 `99+`），OpenIM 未读监听和标已读之后都会立刻变。**联调** Tab：填写 User JWT → 获取 IM Token → 初始化 → 登录 → 发送文本。
+
+版本号四处一致：`SyImSDK.podspec`、`VERSION`、`SyImSDKVersion.current`、示例 `MARKETING_VERSION` / `CFBundleShortVersionString`，都是 `0.5.0`。
 
 `0.5.0` 尚未推到 trunk 之前，`pod install` 找不到 `SyImSDK`。先完成文末发布。
 
@@ -125,7 +127,9 @@ open SyImSDKExample.xcworkspace
 | `getTotalUnreadCount()` | 总未读。会话上的 `unreadCount` 仍是单会话未读 |
 | `markConversationAsRead(conversationId:)` | 标已读。单聊同时发已读回执 |
 | `onRecvC2CReadReceipt` / `onRecvGroupReadReceipt` | 收到已读回执 |
-| `onTotalUnreadCountChanged(count:)` | 总未读变化 |
+| `onUnreadChanged` / `SyImEngine.onUnreadChanged` | 总未读和单会话未读。监听和标已读后都会到 |
+| `onTotalUnreadCountChanged(count:)` | 总未读变化（`onUnreadChanged` 同时也会带上） |
+| `onConversationUnreadChanged(conversationId:unreadCount:)` | 单个会话未读 |
 | `addFriend(fromUserId:toUserId:reqMsg:)` | 好友申请，`POST /api/user/im/friends/add` |
 | `listFriends(ownerUserId:)` | `POST /api/user/im/friends/list` |
 | `getReceivedFriendApplications()` | 收到的好友申请 |
@@ -140,11 +144,43 @@ open SyImSDKExample.xcworkspace
 
 控制面方法要先 `setControlPlaneAccessToken(userJwt)`。已读、未读、处理好友申请、邀请/踢人/退群/解散走 OpenIMSDK，显式 `backend: .httpWs` 时这些调用会抛错（总未读除外，它用会话未读相加）。
 
+### 未读实时刷新
+
+```swift
+im.onUnreadChanged = { update in
+    // update.totalUnreadCount 总未读
+    // update.conversationId / conversationUnreadCount 有值时是单会话
+}
+func onUnreadChanged(_ update: SyImUnreadUpdate) {}
+```
+
+`getConversations()` / `getTotalUnreadCount()` 只更新缓存，不触发上面的回调。`markConversationAsRead` 成功后先按本地缓存把该会话未读记为 0 并回调，再拉一次总未读校正。
+
+### 与腾讯云 IM 对齐、且 OpenIM 支持的能力
+
+这些方法走默认 `backend: .openImSdk`。`backend: .httpWs` 会抛错。
+
+| 方法 | 作用 |
+|------|------|
+| `recallMessage(conversationId:clientMsgId:)` | 按 clientMsgID 撤回。按 seq 撤回仍用 `revokeMessage` |
+| `onMessageRecalled(clientMsgId:revokerUserId:)` | 收到撤回 |
+| `sendAtTextMessage(groupId:text:atUserIds:atAll:)` | 群 @。`atAll == true` 时 @所有人 |
+| `searchConversations` / `searchMessages` / `searchUsers` | 搜会话、本地消息、好友 |
+| `pinConversation` / `setConversationDraft` | 置顶、草稿 |
+| `setConversationReceiveOption(_:option:)` | 免打扰：`.receive` / `.notReceive` / `.notNotify` |
+| `sendTyping(conversationId:focus:)` | 发送正在输入。本 OpenIM 版本收不到对端输入状态 |
+| `sendCustomMessage(userId:groupId:data:description:ext:)` | 自定义消息 |
+| `setSelfCustomInfo` / `getSelfCustomInfo` | 用户自定义字段 `ex` |
+| `setGroupCustomInfo(groupId:ex:)` | 群自定义字段 `ex` |
+| `addToBlacklist` / `removeFromBlacklist` / `getBlacklist` | 黑名单 |
+
+`SyImConversation` 增加了 `isPinned`、`draftText`、`receiveOption`，旧的初始化参数都有默认值。
+
 ## 维护者：打 0.5.0 发布
 
 本机没有 CocoaPods trunk 权限，需要仓库所有者在 **macOS + Xcode** 上执行。CocoaPods trunk 计划在 **2026-12-02** 变为只读，请在那之前推上去。
 
-1. 确认 `SyImSDK.podspec` 的 `s.version` 与 `VERSION` 都是 `0.5.0`。`s.source` 的 tag 是 `v0.5.0`。
+1. 确认 `SyImSDK.podspec` 的 `s.version`、`VERSION`、`SyImSDKVersion.current`、示例 `MARKETING_VERSION` 都是 `0.5.0`。`s.source` 的 tag 是 `v0.5.0`。
 2. 把本分支合并进 `main` 并推送。
 3. 打 tag（必须先有 tag，`pod trunk push` 会按 tag 拉源码）：
 

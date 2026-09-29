@@ -32,7 +32,7 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "SY IM Example"
+        title = "联调 \(SyImSDKVersion.current)"
         view.backgroundColor = .systemBackground
         setupUI()
         #if targetEnvironment(simulator)
@@ -51,6 +51,11 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
             imWsAddr: val(imWsField)
         )
         eng.setEventListener(self)
+        eng.onUnreadChanged = { update in
+            DispatchQueue.main.async {
+                ConversationListViewController.current?.apply(update)
+            }
+        }
         engine = eng
         Task {
             do {
@@ -200,6 +205,10 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
         Task { await reloadConversations() }
     }
 
+    private func reloadConversationsOnMain() {
+        Task { await reloadConversations() }
+    }
+
     private func reloadConversations() async {
         guard let engine else { return }
         do {
@@ -230,8 +239,22 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
             self.appendLog("recv \(fromUserId): \(text ?? "")")
         }
     }
+    func onUnreadChanged(_ update: SyImUnreadUpdate) {
+        DispatchQueue.main.async {
+            let conv = update.conversationId ?? "-"
+            let one = update.conversationUnreadCount.map(String.init) ?? "-"
+            self.appendLog("unread total=\(update.totalUnreadCount) conv=\(conv) unread=\(one)")
+            self.reloadConversationsOnMain()
+        }
+    }
     func onTotalUnreadCountChanged(count: Int) {
         DispatchQueue.main.async { self.appendLog("unread total=\(count)") }
+    }
+    func onConversationUnreadChanged(conversationId: String, unreadCount: Int) {
+        DispatchQueue.main.async { self.appendLog("unread conv=\(conversationId) \(unreadCount)") }
+    }
+    func onMessageRecalled(clientMsgId: String, revokerUserId: String) {
+        DispatchQueue.main.async { self.appendLog("recalled \(clientMsgId) by \(revokerUserId)") }
     }
     func onRecvC2CReadReceipt(userId: String, msgIds: [String]) {
         DispatchQueue.main.async { self.appendLog("c2c read \(userId) \(msgIds.joined(separator: ","))") }
@@ -291,7 +314,7 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
         hint.numberOfLines = 0
         hint.font = .systemFont(ofSize: 12)
         hint.textColor = .secondaryLabel
-        hint.text = "Podfile：pod 'SyImSDK', '~> 0.5.0'（静态链接）。OpenIMSDK 自动带上。流程：User JWT → 获取 IM Token → 初始化 → 登录 → 发送文本。"
+        hint.text = "版本 \(SyImSDKVersion.current)。Podfile：pod 'SyImSDK', '~> 0.5.0'（静态链接）。会话 Tab 的角标是总未读，标已读后立刻刷新。"
 
         [status, hint,
          labeled("AppId", appIdField),

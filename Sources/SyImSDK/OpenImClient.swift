@@ -1,5 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(os.log)
 import os.log
+#endif
 
 #if canImport(UIKit)
 import UIKit
@@ -16,9 +21,11 @@ protocol OpenImEventSink: AnyObject {
     func imOnUserTokenExpired()
     func imOnRecvNewMessage(msgId: String, fromUserId: String, groupId: String?, text: String?)
     func imOnTotalUnreadCountChanged(count: Int)
+    func imOnConversationUnreadChanged(conversationId: String, unreadCount: Int)
     func imOnRecvC2CReadReceipt(userId: String, msgIds: [String])
     func imOnRecvGroupReadReceipt(groupId: String, msgIds: [String])
     func imOnRecvFriendApplication(fromUserId: String, reqMsg: String?)
+    func imOnMessageRecalled(clientMsgId: String, revokerUserId: String)
 }
 
 /// Backend used by `SyImEngine`.
@@ -39,6 +46,22 @@ protocol OpenImClient: AnyObject {
     func kickGroupMembers(groupId: String, userIds: [String], reason: String) async throws
     func quitGroup(groupId: String) async throws
     func dismissGroup(groupId: String) async throws
+    func recall(conversationId: String, clientMsgId: String) async throws
+    func sendAtText(groupId: String, text: String, atUserIds: [String], atAll: Bool) async throws -> String
+    func sendCustom(userId: String?, groupId: String?, data: String, description: String?, ext: String?) async throws -> String
+    func searchConversations(keyword: String) async throws -> [SyImConversation]
+    func searchMessages(keyword: String, conversationId: String?) async throws -> [SyImSearchHit]
+    func searchUsers(keyword: String) async throws -> [SyImUserBrief]
+    func pinConversation(conversationId: String, isPinned: Bool) async throws
+    func setDraft(conversationId: String, draft: String) async throws
+    func setReceiveOption(conversationId: String, option: Int) async throws
+    func sendTyping(conversationId: String, focus: Bool) async throws
+    func setSelfEx(_ ex: String) async throws
+    func selfEx() async throws -> String?
+    func setGroupEx(groupId: String, ex: String) async throws
+    func addBlacklist(userId: String) async throws
+    func removeBlacklist(userId: String) async throws
+    func blacklist() async throws -> [SyImUserBrief]
 }
 
 extension OpenImClient {
@@ -83,6 +106,83 @@ extension OpenImClient {
     func dismissGroup(groupId: String) async throws {
         throw SyImError.openImApi(OpenImClientSupport.sdkRequired("dismissGroup"))
     }
+
+    func recall(conversationId: String, clientMsgId: String) async throws {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("recallMessage"))
+    }
+
+    func sendAtText(groupId: String, text: String, atUserIds: [String], atAll: Bool) async throws -> String {
+        _ = (groupId, text, atUserIds, atAll)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("sendAtTextMessage"))
+    }
+
+    func sendCustom(userId: String?, groupId: String?, data: String, description: String?, ext: String?) async throws -> String {
+        _ = (userId, groupId, data, description, ext)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("sendCustomMessage"))
+    }
+
+    func searchConversations(keyword: String) async throws -> [SyImConversation] {
+        _ = keyword
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("searchConversations"))
+    }
+
+    func searchMessages(keyword: String, conversationId: String?) async throws -> [SyImSearchHit] {
+        _ = (keyword, conversationId)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("searchMessages"))
+    }
+
+    func searchUsers(keyword: String) async throws -> [SyImUserBrief] {
+        _ = keyword
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("searchUsers"))
+    }
+
+    func pinConversation(conversationId: String, isPinned: Bool) async throws {
+        _ = (conversationId, isPinned)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("pinConversation"))
+    }
+
+    func setDraft(conversationId: String, draft: String) async throws {
+        _ = (conversationId, draft)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("setConversationDraft"))
+    }
+
+    func setReceiveOption(conversationId: String, option: Int) async throws {
+        _ = (conversationId, option)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("setConversationReceiveOption"))
+    }
+
+    func sendTyping(conversationId: String, focus: Bool) async throws {
+        _ = (conversationId, focus)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("sendTyping"))
+    }
+
+    func setSelfEx(_ ex: String) async throws {
+        _ = ex
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("setSelfCustomInfo"))
+    }
+
+    func selfEx() async throws -> String? {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("getSelfCustomInfo"))
+    }
+
+    func setGroupEx(groupId: String, ex: String) async throws {
+        _ = (groupId, ex)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("setGroupCustomInfo"))
+    }
+
+    func addBlacklist(userId: String) async throws {
+        _ = userId
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("addToBlacklist"))
+    }
+
+    func removeBlacklist(userId: String) async throws {
+        _ = userId
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("removeFromBlacklist"))
+    }
+
+    func blacklist() async throws -> [SyImUserBrief] {
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("getBlacklist"))
+    }
 }
 
 enum OpenImClientSupport {
@@ -105,6 +205,10 @@ final class MockOpenImClient: OpenImClient {
     private var inbox: [SyImConversation] = []
     private var applications: [SyImFriendApplication] = []
     private var groups: [SyImGroup] = []
+    private var hits: [SyImSearchHit] = []
+    private var blocked: [SyImUserBrief] = []
+    private var selfCustomEx: String?
+    private var groupEx: [String: String] = [:]
     private weak var eventSink: OpenImEventSink?
 
     func setEventSink(_ sink: OpenImEventSink?) {
@@ -125,7 +229,7 @@ final class MockOpenImClient: OpenImClient {
                     userId: "demo_peer",
                     showName: "Demo Peer",
                     latestText: "Mock 模式（未配置 imApiAddr/imWsAddr）。",
-                    unreadCount: 0
+                    unreadCount: 2
                 )
             ]
         }
@@ -156,7 +260,12 @@ final class MockOpenImClient: OpenImClient {
                 at: 0
             )
         }
-        return "mock_\(Int(Date().timeIntervalSince1970 * 1000))"
+        let id = "mock_\(Int(Date().timeIntervalSince1970 * 1000))"
+        hits.insert(
+            SyImSearchHit(conversationId: convId, clientMsgId: id, text: text, sendUserId: self.userId),
+            at: 0
+        )
+        return id
     }
 
     func conversations() async throws -> [SyImConversation] { inbox }
@@ -171,7 +280,6 @@ final class MockOpenImClient: OpenImClient {
         if let idx = inbox.firstIndex(where: { $0.conversationId == conversationId }) {
             inbox[idx].unreadCount = 0
         }
-        eventSink?.imOnTotalUnreadCountChanged(count: inbox.reduce(0) { $0 + $1.unreadCount })
     }
 
     func receivedFriendApplications() async throws -> [SyImFriendApplication] {
@@ -220,6 +328,113 @@ final class MockOpenImClient: OpenImClient {
         groups.removeAll { $0.groupId == groupId }
     }
 
+    func recall(conversationId: String, clientMsgId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        hits.removeAll { $0.conversationId == conversationId && $0.clientMsgId == clientMsgId }
+    }
+
+    func sendAtText(groupId: String, text: String, atUserIds: [String], atAll: Bool) async throws -> String {
+        let names = atAll ? "@所有人" : atUserIds.map { "@\($0)" }.joined(separator: " ")
+        let body = names.isEmpty ? text : "\(names) \(text)"
+        return try await sendText(userId: nil, groupId: groupId, text: body)
+    }
+
+    func sendCustom(userId: String?, groupId: String?, data: String, description: String?, ext: String?) async throws -> String {
+        _ = ext
+        return try await sendText(userId: userId, groupId: groupId, text: description ?? data)
+    }
+
+    func searchConversations(keyword: String) async throws -> [SyImConversation] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return inbox.filter {
+            ($0.showName ?? "").localizedCaseInsensitiveContains(keyword)
+                || $0.conversationId.localizedCaseInsensitiveContains(keyword)
+                || ($0.latestText ?? "").localizedCaseInsensitiveContains(keyword)
+        }
+    }
+
+    func searchMessages(keyword: String, conversationId: String?) async throws -> [SyImSearchHit] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return hits.filter {
+            (conversationId == nil || $0.conversationId == conversationId)
+                && ($0.text ?? "").localizedCaseInsensitiveContains(keyword)
+        }
+    }
+
+    func searchUsers(keyword: String) async throws -> [SyImUserBrief] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return blocked.filter {
+            $0.userId.localizedCaseInsensitiveContains(keyword)
+                || ($0.nickname ?? "").localizedCaseInsensitiveContains(keyword)
+        }
+    }
+
+    func pinConversation(conversationId: String, isPinned: Bool) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard let idx = inbox.firstIndex(where: { $0.conversationId == conversationId }) else {
+            throw SyImError.invalidArgument("unknown conversation \(conversationId)")
+        }
+        inbox[idx].isPinned = isPinned
+    }
+
+    func setDraft(conversationId: String, draft: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard let idx = inbox.firstIndex(where: { $0.conversationId == conversationId }) else {
+            throw SyImError.invalidArgument("unknown conversation \(conversationId)")
+        }
+        inbox[idx].draftText = draft.isEmpty ? nil : draft
+    }
+
+    func setReceiveOption(conversationId: String, option: Int) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard let idx = inbox.firstIndex(where: { $0.conversationId == conversationId }) else {
+            throw SyImError.invalidArgument("unknown conversation \(conversationId)")
+        }
+        inbox[idx].receiveOption = option
+    }
+
+    func sendTyping(conversationId: String, focus: Bool) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard inbox.contains(where: { $0.conversationId == conversationId }) else {
+            throw SyImError.invalidArgument("unknown conversation \(conversationId)")
+        }
+        _ = focus
+    }
+
+    func setSelfEx(_ ex: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        selfCustomEx = ex
+    }
+
+    func selfEx() async throws -> String? {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return selfCustomEx
+    }
+
+    func setGroupEx(groupId: String, ex: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        guard groups.contains(where: { $0.groupId == groupId }) else {
+            throw SyImError.invalidArgument("unknown group \(groupId)")
+        }
+        groupEx[groupId] = ex
+    }
+
+    func addBlacklist(userId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        blocked.removeAll { $0.userId == userId }
+        blocked.insert(SyImUserBrief(userId: userId), at: 0)
+    }
+
+    func removeBlacklist(userId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        blocked.removeAll { $0.userId == userId }
+    }
+
+    func blacklist() async throws -> [SyImUserBrief] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return blocked
+    }
+
     private func updateApplication(userId: String, handleMsg: String, result: Int) throws {
         guard loggedIn else { throw SyImError.notLoggedIn }
         guard let idx = applications.firstIndex(where: { $0.fromUserId == userId && $0.handleResult == 0 }) else {
@@ -239,7 +454,7 @@ final class MockOpenImClient: OpenImClient {
 /// - Send text: REST `POST /msg/send_msg` (documented OpenIM API; requires admin token on stock OpenIM —
 ///   when user token is rejected we surface the real errCode instead of silently mocking).
 ///
-/// Official CocoaPods `OpenIMSDK` exists but has **no SPM**; this package stays SPM-first.
+/// Official OpenIM iOS is CocoaPods-only. HttpWs is the explicit fallback when that pod is not linked.
 final class HttpWsOpenImClient: NSObject, OpenImClient, URLSessionWebSocketDelegate {
     private var apiAddr: String = ""
     private var wsAddr: String = ""
@@ -263,7 +478,9 @@ final class HttpWsOpenImClient: NSObject, OpenImClient, URLSessionWebSocketDeleg
     override init() {
         super.init()
         let cfg = URLSessionConfiguration.default
+        #if !os(Linux)
         cfg.waitsForConnectivity = true
+        #endif
         cfg.timeoutIntervalForRequest = 15
         session = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
     }
@@ -491,6 +708,18 @@ final class HttpWsOpenImClient: NSObject, OpenImClient, URLSessionWebSocketDeleg
     }
 
     private func listenWebSocket() {
+        #if os(Linux)
+        // swift-corelibs 只有 async receive。iOS 仍走下面的 completion。
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.webSocketTask?.receive()
+                self.listenWebSocket()
+            } catch {
+                os_log("OpenIM WS receive error: %{public}@", log: log, type: .error, error.localizedDescription)
+            }
+        }
+        #else
         webSocketTask?.receive { [weak self] result in
             guard let self else { return }
             switch result {
@@ -501,6 +730,7 @@ final class HttpWsOpenImClient: NSObject, OpenImClient, URLSessionWebSocketDeleg
                 self.listenWebSocket()
             }
         }
+        #endif
     }
 
     // MARK: URLSessionWebSocketDelegate
@@ -520,6 +750,15 @@ final class HttpWsOpenImClient: NSObject, OpenImClient, URLSessionWebSocketDeleg
         loginContinuation = nil
         stateLock.unlock()
         pending?.resume()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        webSocketTask: URLSessionWebSocketTask,
+        didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+        reason: Data?
+    ) {
+        _ = (closeCode, reason)
     }
 
     func urlSession(
@@ -643,10 +882,33 @@ final class RealOpenImClient: NSObject, OpenImClient {
         cb.onTotalUnreadMessageCountChanged = { [weak self] count in
             self?.eventSink?.imOnTotalUnreadCountChanged(count: Int(count))
         }
+        cb.onConversationChanged = { [weak self] list in
+            self?.forwardConversationUnread(list)
+        }
+        cb.onNewConversation = { [weak self] list in
+            self?.forwardConversationUnread(list)
+        }
+        cb.onRecvMessageRevoked = { [weak self] info in
+            self?.eventSink?.imOnMessageRecalled(
+                clientMsgId: info?.clientMsgID ?? "",
+                revokerUserId: info?.revokerID ?? ""
+            )
+        }
         cb.onFriendApplicationAdded = { [weak self] application in
             self?.eventSink?.imOnRecvFriendApplication(
                 fromUserId: application?.fromUserID ?? "",
                 reqMsg: application?.reqMsg
+            )
+        }
+    }
+
+    private func forwardConversationUnread(_ list: [OIMConversationInfo]?) {
+        for item in list ?? [] {
+            let id = item.conversationID ?? ""
+            guard !id.isEmpty else { continue }
+            eventSink?.imOnConversationUnreadChanged(
+                conversationId: id,
+                unreadCount: Int(item.unreadCount)
             )
         }
     }
@@ -697,16 +959,7 @@ final class RealOpenImClient: NSObject, OpenImClient {
     func conversations() async throws -> [SyImConversation] {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SyImConversation], Error>) in
             OIMManager.manager.getAllConversationListWith(onSuccess: { list in
-                let mapped: [SyImConversation] = (list ?? []).map { c in
-                    SyImConversation(
-                        conversationId: c.conversationID ?? "",
-                        userId: c.userID,
-                        groupId: c.groupID,
-                        showName: c.showName,
-                        latestText: c.latestMsg?.textElem?.content ?? c.latestMsg?.content,
-                        unreadCount: Int(c.unreadCount)
-                    )
-                }
+                let mapped = (list ?? []).map { Self.mapConversation($0) }
                 cont.resume(returning: mapped)
             }, onFailure: { code, msg in
                 cont.resume(throwing: SyImError.openImApi("conversations code=\(code) \(msg ?? "")"))
@@ -833,6 +1086,244 @@ final class RealOpenImClient: NSObject, OpenImClient {
                 cont.resume(throwing: OpenImClientSupport.failure("dismissGroup", code: Int(code), message: msg))
             })
         }
+    }
+
+    func recall(conversationId: String, clientMsgId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await awaitAck("recallMessage") { success, failure in
+            OIMManager.manager.revokeMessage(conversationId, clientMsgID: clientMsgId, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func sendAtText(groupId: String, text: String, atUserIds: [String], atAll: Bool) async throws -> String {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        let message: OIMMessageInfo
+        if atAll {
+            message = OIMMessageInfo.createText(atAllMessage: text, displayText: "@所有人", message: nil)
+        } else {
+            let infos: [OIMAtInfo] = atUserIds.map { uid in
+                let info = OIMAtInfo()
+                info.atUserID = uid
+                info.groupNickname = uid
+                return info
+            }
+            message = OIMMessageInfo.createText(atMessage: text, atUsersID: atUserIds, atUsersInfo: infos, message: nil)
+        }
+        return try await sendPrepared(message, userId: nil, groupId: groupId)
+    }
+
+    func sendCustom(userId: String?, groupId: String?, data: String, description: String?, ext: String?) async throws -> String {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        let message = OIMMessageInfo.createCustomMessage(data, extension: ext, description: description)
+        return try await sendPrepared(message, userId: userId, groupId: groupId)
+    }
+
+    func searchConversations(keyword: String) async throws -> [SyImConversation] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SyImConversation], Error>) in
+            OIMManager.manager.searchConversation(keyword, onSuccess: { list in
+                cont.resume(returning: (list ?? []).map { Self.mapConversation($0) })
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("searchConversations", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func searchMessages(keyword: String, conversationId: String?) async throws -> [SyImSearchHit] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        let param = OIMSearchParam()
+        param.keywordList = [keyword]
+        param.conversationID = conversationId ?? ""
+        param.pageIndex = 1
+        param.count = 20
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SyImSearchHit], Error>) in
+            OIMManager.manager.searchLocalMessages(param, onSuccess: { result in
+                var hits: [SyImSearchHit] = []
+                for item in result?.searchResultItems ?? [] {
+                    for msg in item.messageList {
+                        hits.append(SyImSearchHit(
+                            conversationId: item.conversationID,
+                            clientMsgId: msg.clientMsgID,
+                            text: msg.textElem?.content ?? msg.content,
+                            sendUserId: msg.sendID
+                        ))
+                    }
+                }
+                cont.resume(returning: hits)
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("searchMessages", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func searchUsers(keyword: String) async throws -> [SyImUserBrief] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        let param = OIMSearchFriendsParam()
+        param.keywordList = [keyword]
+        param.isSearchUserID = true
+        param.isSearchNickname = true
+        param.isSearchRemark = true
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SyImUserBrief], Error>) in
+            OIMManager.manager.searchFriends(param, onSuccess: { list in
+                let mapped = (list ?? []).map {
+                    SyImUserBrief(userId: $0.userID ?? "", nickname: $0.nickname, faceURL: $0.faceURL, ex: $0.ex)
+                }
+                cont.resume(returning: mapped)
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("searchUsers", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func pinConversation(conversationId: String, isPinned: Bool) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await awaitAck("pinConversation") { success, failure in
+            OIMManager.manager.pinConversation(conversationId, isPinned: isPinned, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func setDraft(conversationId: String, draft: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await awaitAck("setConversationDraft") { success, failure in
+            OIMManager.manager.setConversationDraft(conversationId, draftText: draft, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func setReceiveOption(conversationId: String, option: Int) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        let status: OIMReceiveMessageOpt
+        switch option {
+        case SyImReceiveOption.notReceive.rawValue: status = .notReceive
+        case SyImReceiveOption.notNotify.rawValue: status = .notNotify
+        default: status = .receive
+        }
+        try await awaitAck("setConversationReceiveOption") { success, failure in
+            OIMManager.manager.setConversationRecvMessageOpt(conversationId, status: status, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func sendTyping(conversationId: String, focus: Bool) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        // 3.8.3+hotfix.3.1 的 OIMCallbacker.onConversationUserInputStatusChanged: 是空方法，收不到对端正在输入。
+        try await awaitAck("sendTyping") { success, failure in
+            OIMManager.manager.changeInputStates(conversationId, focus: focus, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func setSelfEx(_ ex: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        let current: OIMUserInfo = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<OIMUserInfo, Error>) in
+            OIMManager.manager.getSelfInfoWith(onSuccess: { user in
+                cont.resume(returning: user ?? OIMUserInfo())
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("getSelfCustomInfo", code: Int(code), message: msg))
+            })
+        }
+        current.ex = ex
+        try await awaitAck("setSelfCustomInfo") { success, failure in
+            OIMManager.manager.setSelfInfo(current, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func selfEx() async throws -> String? {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String?, Error>) in
+            OIMManager.manager.getSelfInfoWith(onSuccess: { user in
+                cont.resume(returning: user?.ex)
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("getSelfCustomInfo", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    func setGroupEx(groupId: String, ex: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        let info: OIMGroupInfo = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<OIMGroupInfo, Error>) in
+            OIMManager.manager.getSpecifiedGroupsInfo([groupId], onSuccess: { list in
+                let group = list?.first ?? OIMGroupInfo()
+                group.groupID = groupId
+                cont.resume(returning: group)
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("setGroupCustomInfo", code: Int(code), message: msg))
+            })
+        }
+        info.ex = ex
+        try await awaitAck("setGroupCustomInfo") { success, failure in
+            OIMManager.manager.setGroupInfo(info, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func addBlacklist(userId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await awaitAck("addToBlacklist") { success, failure in
+            OIMManager.manager.add(toBlackList: userId, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func removeBlacklist(userId: String) async throws {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        try await awaitAck("removeFromBlacklist") { success, failure in
+            OIMManager.manager.remove(fromBlackList: userId, onSuccess: success, onFailure: failure)
+        }
+    }
+
+    func blacklist() async throws -> [SyImUserBrief] {
+        guard loggedIn else { throw SyImError.notLoggedIn }
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SyImUserBrief], Error>) in
+            OIMManager.manager.getBlackListWith(onSuccess: { list in
+                let mapped = (list ?? []).map {
+                    SyImUserBrief(userId: $0.userID ?? "", nickname: $0.nickname, faceURL: $0.faceURL, ex: $0.ex)
+                }
+                cont.resume(returning: mapped)
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("getBlacklist", code: Int(code), message: msg))
+            })
+        }
+    }
+
+    private func sendPrepared(_ message: OIMMessageInfo, userId: String?, groupId: String?) async throws -> String {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+            OIMManager.manager.sendMessage(
+                message,
+                recvID: userId,
+                groupID: groupId,
+                offlinePushInfo: nil,
+                onSuccess: { info in
+                    cont.resume(returning: info?.clientMsgID ?? "sdk_\(Int(Date().timeIntervalSince1970 * 1000))")
+                },
+                onProgress: { _ in },
+                onFailure: { code, msg in
+                    cont.resume(throwing: SyImError.openImApi("send code=\(code) \(msg ?? "")"))
+                }
+            )
+        }
+    }
+
+    private func awaitAck(
+        _ op: String,
+        _ body: (@escaping (String?) -> Void, @escaping (Int, String?) -> Void) -> Void
+    ) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            body({ _ in
+                cont.resume()
+            }, { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure(op, code: code, message: msg))
+            })
+        }
+    }
+
+    private static func mapConversation(_ c: OIMConversationInfo) -> SyImConversation {
+        SyImConversation(
+            conversationId: c.conversationID ?? "",
+            userId: c.userID,
+            groupId: c.groupID,
+            showName: c.showName,
+            latestText: c.latestMsg?.textElem?.content ?? c.latestMsg?.content,
+            unreadCount: Int(c.unreadCount),
+            isPinned: c.isPinned,
+            draftText: c.draftText,
+            receiveOption: c.recvMsgOpt.rawValue
+        )
     }
 
     private static func mapGroup(_ info: OIMGroupInfo) -> SyImGroup {

@@ -24,6 +24,8 @@ protocol OpenImEventSink: AnyObject {
     func imOnConversationUnreadChanged(conversationId: String, unreadCount: Int)
     func imOnRecvC2CReadReceipt(userId: String, msgIds: [String])
     func imOnRecvGroupReadReceipt(groupId: String, msgIds: [String])
+    /// 统一回执；单聊的 conversationId 可为空串，由引擎用当前 uid 补齐。
+    func imOnRecvReadReceipts(_ receipts: [SyImReadReceipt])
     func imOnRecvFriendApplication(fromUserId: String, reqMsg: String?)
     func imOnMessageRecalled(clientMsgId: String, revokerUserId: String)
     func imOnTypingStatusChanged(_ status: SyImTypingStatus)
@@ -63,10 +65,16 @@ protocol OpenImClient: AnyObject {
     func addBlacklist(userId: String) async throws
     func removeBlacklist(userId: String) async throws
     func blacklist() async throws -> [SyImUserBrief]
+    func groupReadInfo(conversationId: String, clientMsgId: String) async throws -> SyImRawGroupReadInfo
 }
 
 extension OpenImClient {
     func setEventSink(_ sink: OpenImEventSink?) {}
+
+    func groupReadInfo(conversationId: String, clientMsgId: String) async throws -> SyImRawGroupReadInfo {
+        _ = (conversationId, clientMsgId)
+        throw SyImError.openImApi(OpenImClientSupport.sdkRequired("getGroupMessageReadInfo"))
+    }
 
     func totalUnreadCount() async throws -> Int {
         throw SyImError.openImApi(OpenImClientSupport.sdkRequired("getTotalUnreadCount"))
@@ -894,20 +902,30 @@ final class RealOpenImClient: NSObject, OpenImClient {
             )
         }
         cb.onRecvC2CReadReceipt = { [weak self] list in
+            var unified: [SyImReadReceipt] = []
             for item in list ?? [] {
                 self?.eventSink?.imOnRecvC2CReadReceipt(
                     userId: item.userID ?? "",
                     msgIds: item.msgIDList ?? []
                 )
+                unified.append(SyImReadReceipt(conversationId: "", userId: item.userID ?? "", groupId: nil,
+                                               msgIds: item.msgIDList ?? [], readTime: Int64(item.readTime)))
             }
+            if !unified.isEmpty { self?.eventSink?.imOnRecvReadReceipts(unified) }
         }
         cb.onRecvGroupReadReceipt = { [weak self] list in
+            var unified: [SyImReadReceipt] = []
             for item in list ?? [] {
                 self?.eventSink?.imOnRecvGroupReadReceipt(
                     groupId: item.groupID ?? "",
                     msgIds: item.msgIDList ?? []
                 )
+                let gid = item.groupID ?? ""
+                unified.append(SyImReadReceipt(conversationId: SyImReadReceipts.groupConversationId(gid),
+                                               userId: item.userID ?? "", groupId: gid.isEmpty ? nil : gid,
+                                               msgIds: item.msgIDList ?? [], readTime: Int64(item.readTime)))
             }
+            if !unified.isEmpty { self?.eventSink?.imOnRecvReadReceipts(unified) }
         }
         cb.onTotalUnreadMessageCountChanged = { [weak self] count in
             self?.eventSink?.imOnTotalUnreadCountChanged(count: Int(count))
@@ -940,6 +958,31 @@ final class RealOpenImClient: NSObject, OpenImClient {
                 conversationId: id,
                 unreadCount: Int(item.unreadCount)
             )
+        }
+    }
+
+    /// OpenIM `findMessageList` → `attachedInfoElem.groupHasReadInfo`（iOS 带 `hasReadUserIDList`）。
+    /// 未读 = 发送时群人数 − 发送者 − 已读，不小于 0。
+    func groupReadInfo(conversationId: String, clientMsgId: String) async throws -> SyImRawGroupReadInfo {
+        let param = OIMFindMessageListParam()
+        param.conversationID = conversationId
+        param.clientMsgIDList = [clientMsgId]
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<SyImRawGroupReadInfo, Error>) in
+            OIMManager.manager.findMessageList([param], onSuccess: { result in
+                let items = (result?.findResultItems ?? []) + (result?.searchResultItems ?? [])
+                let msg = items.flatMap { $0.messageList ?? [] }.first { $0.clientMsgID == clientMsgId }
+                let info = msg?.attachedInfoElem?.groupHasReadInfo
+                let read = Int(info?.hasReadCount ?? 0)
+                let members = Int(info?.groupMemberCount ?? 0)
+                cont.resume(returning: SyImRawGroupReadInfo(
+                    hasReadCount: read,
+                    unreadCount: max(0, members - 1 - read),
+                    readers: info?.hasReadUserIDList ?? [],
+                    seq: Int64(msg?.seq ?? 0),
+                    found: msg != nil))
+            }, onFailure: { code, msg in
+                cont.resume(throwing: OpenImClientSupport.failure("findMessageList", code: Int(code), message: msg))
+            })
         }
     }
 

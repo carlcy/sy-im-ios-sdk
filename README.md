@@ -165,6 +165,13 @@ func onUnreadChanged(_ update: SyImUnreadUpdate) {}
 
 Android（`ImControlPlane.reactToMessage` 等）与 Flutter 同名同参。
 
+### 已读回执（三端统一）
+
+- 统一事件 `onRecvReadReceipts(_ receipts: [SyImReadReceipt])`：单聊和群聊都回调，每个已读者一条。字段 `conversationId` / `userId`（已读方）/ `groupId`（单聊 nil）/ `msgIds` / `readTime`（毫秒，未知 0），与 Android `ImReadReceipt`、Flutter `SyImReadReceipt` 相同。旧回调 `onRecvC2CReadReceipt` / `onRecvGroupReadReceipt` 保留。
+- `getGroupMessageReadInfo(conversationId:clientMsgId:)` → `SyImGroupReadInfo`（`hasReadCount` / `unreadCount` / `readUserIds` / `source`）。iOS OpenIM 自带已读成员（`source == "openim"`）；没有时若已 `setControlPlaneAccessToken`，用控制面 who-read 花名册补（`controlPlane`）。未读 = 发送时群人数 − 发送者 − 已读。
+- 花名册：`whoRead(conversationId:seq:)`，由 `reportGroupMessagesRead(conversationId:seqs:)` 写入；只含上报过的成员，不是全员名单。
+- 三端差异：Flutter 没有群回执事件（flutter_openim_sdk 3.8.3 无该监听），Android / Flutter 的查询只有人数、成员靠花名册。
+
 ### 错误码
 
 控制面（`getToken`、`controlPlanePost`、好友 / 群 / 历史 / 撤回）失败时抛 `SyImError.controlPlane(code:httpStatus:message:)`，`error.code` 为服务端业务码。取值在 `SyImErrorCode`，与 Android `ImErrorCode`、Flutter `SyImErrorCode` 相同：

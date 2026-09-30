@@ -20,6 +20,8 @@ public protocol ImEventListener: AnyObject {
     func onRecvC2CReadReceipt(userId: String, msgIds: [String])
     /// 群聊已读回执。
     func onRecvGroupReadReceipt(groupId: String, msgIds: [String])
+    /// 已读回执（单聊 + 群聊统一，三端相同）。每个已读者一条；与上面两个回调同时触发。
+    func onRecvReadReceipts(_ receipts: [SyImReadReceipt])
     /// 收到新的好友申请。
     func onRecvFriendApplication(fromUserId: String, reqMsg: String?)
     /// 对方输入状态变化。`status.typing == false` 表示停止输入。与 Android `onTypingStatus` 对应。
@@ -39,6 +41,7 @@ public extension ImEventListener {
     func onMessageRecalled(clientMsgId: String, revokerUserId: String) {}
     func onRecvC2CReadReceipt(userId: String, msgIds: [String]) {}
     func onRecvGroupReadReceipt(groupId: String, msgIds: [String]) {}
+    func onRecvReadReceipts(_ receipts: [SyImReadReceipt]) {}
     func onRecvFriendApplication(fromUserId: String, reqMsg: String?) {}
     func onTypingStatusChanged(_ status: SyImTypingStatus) {}
 }

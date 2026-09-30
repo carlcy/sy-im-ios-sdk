@@ -683,6 +683,39 @@ public final class SyImEngine {
         return jwt
     }
 
+    // MARK: - 已读回执（三端统一）
+
+    /// 群消息已读概况，三端同名同义。iOS OpenIM 自带已读成员；没有成员且 `useControlPlane` 且已
+    /// `setControlPlaneAccessToken` 时，查控制面 who-read 花名册补齐（`source == "controlPlane"`）。
+    public func getGroupMessageReadInfo(conversationId: String, clientMsgId: String,
+                                        useControlPlane: Bool = true) async throws -> SyImGroupReadInfo {
+        let raw = try await client.groupReadInfo(conversationId: conversationId, clientMsgId: clientMsgId)
+        var roster: [String]?
+        if raw.readers.isEmpty, raw.found, useControlPlane, !(controlPlaneAccessToken ?? "").isEmpty {
+            roster = try? await whoRead(conversationId: conversationId, seq: raw.seq)
+        }
+        return SyImReadReceipts.merge(clientMsgId: clientMsgId, hasReadCount: raw.hasReadCount,
+                                      unreadCount: raw.unreadCount, openImReaders: raw.readers, roster: roster)
+    }
+
+    /// 控制面已读花名册。`POST /api/user/im/messages/who-read`。返回去重后的已读者（最近在前）。
+    /// 只含调用过 `reportGroupMessagesRead` 的成员。
+    public func whoRead(conversationId: String, seq: Int64) async throws -> [String] {
+        var body: [String: Any] = ["conversationId": conversationId]
+        if seq > 0 { body["seq"] = seq }
+        let data = try await controlPlaneObject(path: "/api/user/im/messages/who-read", body: body)
+        return SyImReadReceipts.readers(fromWhoRead: data["list"] as? [[String: Any]] ?? [])
+    }
+
+    /// 把本端已读的群消息写入控制面花名册。`POST /api/user/im/conversations/mark-read`（`mode=msgs` + `seqs`），
+    /// 服务端同时向 OpenIM 标记这些消息已读。
+    public func reportGroupMessagesRead(conversationId: String, seqs: [Int64]) async throws {
+        guard let uid = currentUserId, !uid.isEmpty else { throw SyImError.notLoggedIn }
+        _ = try await controlPlaneObject(path: "/api/user/im/conversations/mark-read", body: [
+            "userId": uid, "conversationId": conversationId, "mode": "msgs", "seqs": seqs.filter { $0 > 0 },
+        ])
+    }
+
     private func controlPlaneObject(path: String, body: [String: Any]) async throws -> [String: Any] {
         let data = try await controlPlaneData(path: path, userJwt: try requireControlPlaneJwt(), body: body)
         if let dict = data as? [String: Any] { return dict }
@@ -737,6 +770,15 @@ extension SyImEngine: OpenImEventSink {
     }
     func imOnRecvGroupReadReceipt(groupId: String, msgIds: [String]) {
         eventListener?.onRecvGroupReadReceipt(groupId: groupId, msgIds: msgIds)
+    }
+    func imOnRecvReadReceipts(_ receipts: [SyImReadReceipt]) {
+        let me = currentUserId ?? ""
+        let filled = receipts.map { r -> SyImReadReceipt in
+            guard r.conversationId.isEmpty, !r.isGroup else { return r }
+            return SyImReadReceipt(conversationId: SyImReadReceipts.singleConversationId(me, r.userId),
+                                   userId: r.userId, groupId: nil, msgIds: r.msgIds, readTime: r.readTime)
+        }
+        eventListener?.onRecvReadReceipts(filled)
     }
     func imOnRecvFriendApplication(fromUserId: String, reqMsg: String?) {
         eventListener?.onRecvFriendApplication(fromUserId: fromUserId, reqMsg: reqMsg)

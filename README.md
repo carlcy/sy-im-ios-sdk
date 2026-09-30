@@ -156,6 +156,15 @@ func onUnreadChanged(_ update: SyImUnreadUpdate) {}
 
 `getConversations()` / `getTotalUnreadCount()` 只更新缓存，不触发上面的回调。`markConversationAsRead` 成功后先按本地缓存把该会话未读记为 0 并回调，再拉一次总未读校正。
 
+### 表情回应与会话标签（控制面 lite）
+
+需先 `setControlPlaneAccessToken(userJwt)`。
+
+- `reactToMessage(fromUserId:emoji:toUserId:groupId:targetClientMsgId:targetSeq:add:)` → `POST /api/user/im/reaction`。服务端发一条 Custom(110)（`description` 为 `sy_reaction_lite`），对端在普通新消息里收到，用 `SyImReaction.parse(customData)` 解析。**不是** OpenIM 原生回应（OpenIM 3.x 开源版没有），服务端不做聚合计数。
+- 会话标签（每个用户自己的会话分组，存在 SY 服务端，与置顶无关）：`createConversationTag` / `listConversationTags` / `deleteConversationTag` / `addConversationsToTag` / `removeConversationsFromTag`。
+
+Android（`ImControlPlane.reactToMessage` 等）与 Flutter 同名同参。
+
 ### 错误码
 
 控制面（`getToken`、`controlPlanePost`、好友 / 群 / 历史 / 撤回）失败时抛 `SyImError.controlPlane(code:httpStatus:message:)`，`error.code` 为服务端业务码。取值在 `SyImErrorCode`，与 Android `ImErrorCode`、Flutter `SyImErrorCode` 相同：

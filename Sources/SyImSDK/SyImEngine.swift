@@ -510,6 +510,70 @@ public final class SyImEngine {
         ])
     }
 
+    // MARK: - 表情回应（lite）与会话标签（控制面）
+
+    /// 对一条消息加 / 取消表情回应。`POST /api/user/im/reaction`。
+    ///
+    /// 服务端以 Custom(110) 消息发出（`data` 里 `sy=reaction_lite`），对端按普通自定义消息收到，用
+    /// `SyImReaction.parse(_:)` 解析。不是 OpenIM 原生回应接口，也没有服务端聚合计数。
+    /// 单聊传 `toUserId`，群聊传 `groupId`；目标消息用 `targetClientMsgId` 或 `targetSeq`。
+    @discardableResult
+    public func reactToMessage(
+        fromUserId: String,
+        emoji: String,
+        toUserId: String? = nil,
+        groupId: String? = nil,
+        targetClientMsgId: String? = nil,
+        targetSeq: Int64 = 0,
+        targetSenderId: String? = nil,
+        add: Bool = true
+    ) async throws -> [String: Any] {
+        let body = SyImReaction.requestBody(
+            fromUserId: try requireId(fromUserId, name: "fromUserId"), emoji: emoji,
+            toUserId: toUserId, groupId: groupId, targetClientMsgId: targetClientMsgId,
+            targetSeq: targetSeq, targetSenderId: targetSenderId, add: add)
+        return try await controlPlaneObject(path: "/api/user/im/reaction", body: body)
+    }
+
+    /// 新建会话标签（每个用户自己的分组，存在 SY 服务端）。返回值含 `tag`。
+    @discardableResult
+    public func createConversationTag(ownerUserId: String, name: String, color: String = "", remark: String = "") async throws -> [String: Any] {
+        try await controlPlaneObject(path: "/api/user/im/conversations/tags/create", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"),
+            "name": try requireId(name, name: "name"), "color": color, "remark": remark,
+        ])
+    }
+
+    /// 列出会话标签。`list` 每项含 `id` / `name` / `memberCount` / `members`（会话 id，最多 200）。
+    public func listConversationTags(ownerUserId: String) async throws -> [String: Any] {
+        try await controlPlaneObject(path: "/api/user/im/conversations/tags/list", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"),
+        ])
+    }
+
+    /// 删除会话标签。
+    public func deleteConversationTag(ownerUserId: String, tagId: Int64) async throws {
+        _ = try await controlPlaneObject(path: "/api/user/im/conversations/tags/delete", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"), "tagId": tagId,
+        ])
+    }
+
+    /// 把会话加入标签。
+    public func addConversationsToTag(ownerUserId: String, tagId: Int64, conversationIds: [String]) async throws {
+        _ = try await controlPlaneObject(path: "/api/user/im/conversations/tags/members", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"), "tagId": tagId,
+            "action": "add", "conversationIds": conversationIds,
+        ])
+    }
+
+    /// 把会话移出标签。
+    public func removeConversationsFromTag(ownerUserId: String, tagId: Int64, conversationIds: [String]) async throws {
+        _ = try await controlPlaneObject(path: "/api/user/im/conversations/tags/members", body: [
+            "ownerUserId": try requireId(ownerUserId, name: "ownerUserId"), "tagId": tagId,
+            "action": "remove", "conversationIds": conversationIds,
+        ])
+    }
+
     /// 控制面拉取 IM Token：优先 User JWT → POST /api/user/im/token；否则需自行带 AppSecret 调 server 路径。
     public func getToken(userId: String, userJwt: String) async throws -> [String: Any] {
         let base = apiBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

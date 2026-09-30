@@ -22,6 +22,8 @@ public protocol ImEventListener: AnyObject {
     func onRecvGroupReadReceipt(groupId: String, msgIds: [String])
     /// 收到新的好友申请。
     func onRecvFriendApplication(fromUserId: String, reqMsg: String?)
+    /// 对方输入状态变化。`status.typing == false` 表示停止输入。与 Android `onTypingStatus` 对应。
+    func onTypingStatusChanged(_ status: SyImTypingStatus)
 }
 
 public extension ImEventListener {
@@ -38,4 +40,5 @@ public extension ImEventListener {
     func onRecvC2CReadReceipt(userId: String, msgIds: [String]) {}
     func onRecvGroupReadReceipt(groupId: String, msgIds: [String]) {}
     func onRecvFriendApplication(fromUserId: String, reqMsg: String?) {}
+    func onTypingStatusChanged(_ status: SyImTypingStatus) {}
 }

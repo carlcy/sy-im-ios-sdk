@@ -25,5 +25,10 @@ let package = Package(
             dependencies: [],
             path: "Sources/SyImSDK"
         ),
+        .testTarget(
+            name: "SyImSDKTests",
+            dependencies: ["SyImSDK"],
+            path: "Tests/SyImSDKTests"
+        ),
     ]
 )

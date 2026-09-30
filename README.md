@@ -168,7 +168,7 @@ func onUnreadChanged(_ update: SyImUnreadUpdate) {}
 | `searchConversations` / `searchMessages` / `searchUsers` | 搜会话、本地消息、好友 |
 | `pinConversation` / `setConversationDraft` | 置顶、草稿 |
 | `setConversationReceiveOption(_:option:)` | 免打扰：`.receive` / `.notReceive` / `.notNotify` |
-| `sendTyping(conversationId:focus:)` | 发送正在输入。本 OpenIM 版本收不到对端输入状态 |
+| `sendTyping(conversationId:focus:)` | 发送正在输入（OpenIM `changeInputStates`）。对端回调 `onTypingStatusChanged(_ status: SyImTypingStatus)`，`typing == false` 即停止。OpenIMSDK 3.8.3+hotfix.3.1 的 iOS 回调原本是空方法，SDK 在运行时替换了 `-[OIMCallbacker onConversationUserInputStatusChanged:]` 把状态转出来；需真机双端验证 |
 | `sendCustomMessage(userId:groupId:data:description:ext:)` | 自定义消息 |
 | `setSelfCustomInfo` / `getSelfCustomInfo` | 用户自定义字段 `ex` |
 | `setGroupCustomInfo(groupId:ex:)` | 群自定义字段 `ex` |

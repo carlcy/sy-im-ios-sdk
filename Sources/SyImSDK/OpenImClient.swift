@@ -26,6 +26,7 @@ protocol OpenImEventSink: AnyObject {
     func imOnRecvGroupReadReceipt(groupId: String, msgIds: [String])
     func imOnRecvFriendApplication(fromUserId: String, reqMsg: String?)
     func imOnMessageRecalled(clientMsgId: String, revokerUserId: String)
+    func imOnTypingStatusChanged(_ status: SyImTypingStatus)
 }
 
 /// Backend used by `SyImEngine`.
@@ -398,7 +399,10 @@ final class MockOpenImClient: OpenImClient {
         guard inbox.contains(where: { $0.conversationId == conversationId }) else {
             throw SyImError.invalidArgument("unknown conversation \(conversationId)")
         }
-        _ = focus
+        // Mock 没有对端：把本端状态回显给监听，便于 UI 调试。
+        eventSink?.imOnTypingStatusChanged(
+            SyImTypingStatus(conversationId: conversationId, userId: userId ?? "", platformIds: focus ? [1] : [])
+        )
     }
 
     func setSelfEx(_ ex: String) async throws {
@@ -850,8 +854,34 @@ final class RealOpenImClient: NSObject, OpenImClient {
         }
     }
 
+    /// OpenIMSDK 3.8.3+hotfix.3.1 的 `-[OIMCallbacker onConversationUserInputStatusChanged:]` 是空方法，
+    /// Go 内核推来的输入状态被丢掉。这里在运行时替换这个空实现，把原样 JSON 转给当前客户端。
+    /// 只替换这一个 selector；OpenIM 以后补上实现时应删掉这段。
+    private static weak var typingTarget: RealOpenImClient?
+    private static var typingHookInstalled = false
+
+    private static func installTypingHook() {
+        guard !typingHookInstalled else { return }
+        typingHookInstalled = true
+        let selector = NSSelectorFromString("onConversationUserInputStatusChanged:")
+        guard let method = class_getInstanceMethod(OIMCallbacker.self, selector) else {
+            os_log("OIMCallbacker has no onConversationUserInputStatusChanged:, typing receive disabled", log: log, type: .error)
+            return
+        }
+        let block: @convention(block) (AnyObject, AnyObject?) -> Void = { _, change in
+            let json = (change as? String) ?? (change as? NSString).map { $0 as String }
+            guard let status = SyImTypingStatus.parse(json) else { return }
+            DispatchQueue.main.async {
+                RealOpenImClient.typingTarget?.eventSink?.imOnTypingStatusChanged(status)
+            }
+        }
+        method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+
     /// Message / unread / friend callbacks. `login` calls `setListener`, which registers them.
     private func wireListeners() {
+        RealOpenImClient.typingTarget = self
+        RealOpenImClient.installTypingHook()
         let cb = OIMManager.callbacker
         cb.onRecvNewMessage = { [weak self] msg in
             guard let msg else { return }
@@ -1204,7 +1234,6 @@ final class RealOpenImClient: NSObject, OpenImClient {
 
     func sendTyping(conversationId: String, focus: Bool) async throws {
         guard loggedIn else { throw SyImError.notLoggedIn }
-        // 3.8.3+hotfix.3.1 的 OIMCallbacker.onConversationUserInputStatusChanged: 是空方法，收不到对端正在输入。
         try await awaitAck("sendTyping") { success, failure in
             OIMManager.manager.changeInputStates(conversationId, focus: focus, onSuccess: success, onFailure: failure)
         }

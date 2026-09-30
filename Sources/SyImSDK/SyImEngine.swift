@@ -353,7 +353,8 @@ public final class SyImEngine {
         )
     }
 
-    /// 发送正在输入。本 OpenIM 版本只保证发出；对端输入状态回调在 3.8.3+hotfix.3.1 里是空实现，不会回调到本端。
+    /// 发送正在输入（OpenIM `changeInputStates`）。对端回调 `ImEventListener.onTypingStatusChanged(_:)`。
+    /// OpenIM 3.8.3+hotfix.3.1 的 iOS 回调原本是空方法，SDK 在运行时补上了转发。
     public func sendTyping(conversationId: String, focus: Bool) async throws {
         guard isLoggedIn else { throw SyImError.notLoggedIn }
         try await client.sendTyping(
@@ -681,6 +682,9 @@ extension SyImEngine: OpenImEventSink {
     }
     func imOnRecvFriendApplication(fromUserId: String, reqMsg: String?) {
         eventListener?.onRecvFriendApplication(fromUserId: fromUserId, reqMsg: reqMsg)
+    }
+    func imOnTypingStatusChanged(_ status: SyImTypingStatus) {
+        eventListener?.onTypingStatusChanged(status)
     }
 }
 

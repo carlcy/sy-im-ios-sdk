@@ -173,3 +173,34 @@ public struct SyImGroup: Equatable, Sendable {
         self.ownerUserId = ownerUserId
     }
 }
+
+/// 对方输入状态（OpenIM `onConversationUserInputStatusChanged`）。
+///
+/// `platformIds` 是对方正在输入的端（OpenIM 平台号）；为空表示停止输入。
+/// 字段与 Android `ImTypingStatus`、Flutter `SyImTypingStatus` 相同。
+public struct SyImTypingStatus: Equatable, Sendable {
+    public let conversationId: String
+    public let userId: String
+    public let platformIds: [Int]
+
+    public var typing: Bool { !platformIds.isEmpty }
+
+    public init(conversationId: String, userId: String, platformIds: [Int]) {
+        self.conversationId = conversationId
+        self.userId = userId
+        self.platformIds = platformIds
+    }
+
+    /// 解析 OpenIM 原样 JSON（`{"conversationID","userID","platformIDs"}`）。缺 userID 时返回 nil。
+    public static func parse(_ json: String?) -> SyImTypingStatus? {
+        guard let json, let data = json.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let userId = obj["userID"] as? String, !userId.isEmpty else { return nil }
+        let platforms = (obj["platformIDs"] as? [Any])?.compactMap { ($0 as? NSNumber)?.intValue } ?? []
+        return SyImTypingStatus(
+            conversationId: (obj["conversationID"] as? String) ?? "",
+            userId: userId,
+            platformIds: platforms
+        )
+    }
+}

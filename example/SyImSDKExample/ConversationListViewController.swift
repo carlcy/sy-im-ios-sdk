@@ -76,7 +76,7 @@ final class ConversationListViewController: UITableViewController {
     }
 
     private func applyBadge() {
-        let item = navigationController?.tabBarItem ?? tabBarItem
+        guard let item = navigationController?.tabBarItem ?? tabBarItem else { return }
         if totalUnread <= 0 {
             item.badgeValue = nil
         } else if totalUnread > 99 {

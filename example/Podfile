@@ -1,25 +1,26 @@
-# SyImSDK Example — DEFAULT = OpenIMSDK via CocoaPods (RealOpenImClient).
-# HttpWs only with explicit backend: .httpWs
+# 与客户工程相同：按库名和版本号接入 SyImSDK。
+# OpenIMSDK 3.8.3+hotfix.3.1 由 SyImSDK.podspec 传递依赖自动解析。
+# 不要写 :path、不要再单独 pod 'OpenIMSDK'、不要下载或解压 framework / zip。
 #
+# 维护者把 0.5.0 推到 CocoaPods trunk 之后：
 #   cd example && pod install
 #   open SyImSDKExample.xcworkspace
 #
+# 版本约束与仓库根目录 SyImSDK.podspec 的 s.version 保持一致。
+
 platform :ios, '13.0'
-# OpenIMSDKCore ships a static xcframework — must use static linkage
+
+# OpenIMSDKCore 是静态 xcframework，必须静态链接。
 use_frameworks! :linkage => :static
 
 target 'SyImSDKExample' do
-  pod 'SyImSDK', :path => '..'
-  # Explicit pin (also in SyImSDK.podspec). OpenIM server v3 @ 47.105.48.196
-  pod 'OpenIMSDK', '3.8.3+hotfix.3.1'
+  pod 'SyImSDK', '~> 0.5.0'
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-      config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
-      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
     end
   end
 end

@@ -32,13 +32,13 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "SY IM Example"
+        title = "联调 \(SyImSDKVersion.current)"
         view.backgroundColor = .systemBackground
         setupUI()
         #if targetEnvironment(simulator)
-        appendLog("默认 OpenIMSDK（pod install 后）。地址已预填生产 HTTPS/WSS。HttpWs 需显式 backend:.httpWs。")
+        appendLog("依赖 pod 'SyImSDK', '~> 0.5.0'。OpenIMSDK 由 podspec 自动解析，不要下载 framework。")
         #else
-        appendLog("真机：pod install → OpenIMSDK 原生收发。调试自签证书见 CLIENT_TRUST / sy-rtc-server-ca.crt。")
+        appendLog("真机：pod install 后由 OpenIMSDK 收发。自签证书把服务端 CA 装进系统信任。")
         #endif
     }
 
@@ -51,6 +51,11 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
             imWsAddr: val(imWsField)
         )
         eng.setEventListener(self)
+        eng.onUnreadChanged = { update in
+            DispatchQueue.main.async {
+                ConversationListViewController.current?.apply(update)
+            }
+        }
         engine = eng
         Task {
             do {
@@ -200,15 +205,20 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
         Task { await reloadConversations() }
     }
 
+    private func reloadConversationsOnMain() {
+        Task { await reloadConversations() }
+    }
+
     private func reloadConversations() async {
         guard let engine else { return }
         do {
             let list = try await engine.getConversations()
+            let total = (try? await engine.getTotalUnreadCount()) ?? list.reduce(0) { $0 + $1.unreadCount }
             let body = list.isEmpty
-                ? "(empty)"
+                ? "(empty)  totalUnread=\(total)"
                 : list.map {
                     "\($0.showName ?? $0.conversationId): \($0.latestText ?? "")  unread=\($0.unreadCount)"
-                }.joined(separator: "\n")
+                }.joined(separator: "\n") + "\n— totalUnread=\(total)"
             await MainActor.run { self.convView.text = body }
         } catch {
             await MainActor.run { self.appendLog("conversations error: \(error)") }
@@ -228,6 +238,32 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
         DispatchQueue.main.async {
             self.appendLog("recv \(fromUserId): \(text ?? "")")
         }
+    }
+    func onUnreadChanged(_ update: SyImUnreadUpdate) {
+        DispatchQueue.main.async {
+            let conv = update.conversationId ?? "-"
+            let one = update.conversationUnreadCount.map(String.init) ?? "-"
+            self.appendLog("unread total=\(update.totalUnreadCount) conv=\(conv) unread=\(one)")
+            self.reloadConversationsOnMain()
+        }
+    }
+    func onTotalUnreadCountChanged(count: Int) {
+        DispatchQueue.main.async { self.appendLog("unread total=\(count)") }
+    }
+    func onConversationUnreadChanged(conversationId: String, unreadCount: Int) {
+        DispatchQueue.main.async { self.appendLog("unread conv=\(conversationId) \(unreadCount)") }
+    }
+    func onMessageRecalled(clientMsgId: String, revokerUserId: String) {
+        DispatchQueue.main.async { self.appendLog("recalled \(clientMsgId) by \(revokerUserId)") }
+    }
+    func onRecvC2CReadReceipt(userId: String, msgIds: [String]) {
+        DispatchQueue.main.async { self.appendLog("c2c read \(userId) \(msgIds.joined(separator: ","))") }
+    }
+    func onRecvGroupReadReceipt(groupId: String, msgIds: [String]) {
+        DispatchQueue.main.async { self.appendLog("group read \(groupId) \(msgIds.count)") }
+    }
+    func onRecvFriendApplication(fromUserId: String, reqMsg: String?) {
+        DispatchQueue.main.async { self.appendLog("friend apply \(fromUserId): \(reqMsg ?? "")") }
     }
 
     // MARK: - UI
@@ -278,7 +314,7 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
         hint.numberOfLines = 0
         hint.font = .systemFont(ofSize: 12)
         hint.textColor = .secondaryLabel
-        hint.text = "默认 OpenIMSDK（CocoaPods）。基址 https://47.105.48.196 + /openim + wss msg_gateway。流程：User JWT → Get IM Token → Init/Login/Send。HttpWs 仅显式 backend:.httpWs。"
+        hint.text = "版本 \(SyImSDKVersion.current)。Podfile：pod 'SyImSDK', '~> 0.5.0'（静态链接）。会话 Tab 的角标是总未读，标已读后立刻刷新。"
 
         [status, hint,
          labeled("AppId", appIdField),

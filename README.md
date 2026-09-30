@@ -33,7 +33,7 @@ pod install
 
 必须 `use_frameworks! :linkage => :static`。OpenIM 的核心是静态 xcframework，动态链接会报 transitive static binary 错误。
 
-版本 `0.5.0` 发布到 CocoaPods trunk 之后，上面这一行才能解析。发布步骤见文末。
+`SyImSDK` 0.5.0 已发布到 CocoaPods trunk，上面这一行直接可用。维护者发布步骤见文末。
 
 ### 2. 初始化
 
@@ -116,7 +116,7 @@ open SyImSDKExample.xcworkspace
 
 版本号四处一致：`SyImSDK.podspec`、`VERSION`、`SyImSDKVersion.current`、示例 `MARKETING_VERSION` / `CFBundleShortVersionString`，都是 `0.5.0`。
 
-`0.5.0` 尚未推到 trunk 之前，`pod install` 找不到 `SyImSDK`。先完成文末发布。
+`SyImSDK` 0.5.0 已在 trunk；`pod install` 找不到时先 `pod repo update`。
 
 ## 公开 API（在原有初始化 / 登录 / 发消息之上追加）
 

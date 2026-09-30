@@ -2,7 +2,7 @@
 # OpenIMSDK 3.8.3+hotfix.3.1 由 SyImSDK.podspec 传递依赖自动解析。
 # 不要写 :path、不要再单独 pod 'OpenIMSDK'、不要下载或解压 framework / zip。
 #
-# 维护者把 0.5.0 推到 CocoaPods trunk 之后：
+# SyImSDK 0.5.0 已在 CocoaPods trunk：
 #   cd example && pod install
 #   open SyImSDKExample.xcworkspace
 #

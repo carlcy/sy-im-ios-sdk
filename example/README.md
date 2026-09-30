@@ -8,7 +8,7 @@ pod 'SyImSDK', '~> 0.5.0'
 
 `OpenIMSDK 3.8.3+hotfix.3.1` 由 `SyImSDK.podspec` 自动带上。Podfile 里不要再写一条 `pod 'OpenIMSDK'`。
 
-维护者把 **0.5.0** 推到 CocoaPods trunk 之后：
+**0.5.0** 已在 CocoaPods trunk：
 
 ```bash
 cd example
@@ -32,4 +32,4 @@ open SyImSDKExample.xcworkspace
 
 自签证书：把 `https://47.105.48.196/downloads/sy-rtc-server-ca.crt` 装进设备信任区。
 
-`0.5.0` 还没上 trunk 时，`pod install` 会找不到 `SyImSDK`。发布步骤在仓库根目录 README 的「维护者：打 0.5.0 发布」。
+`pod install` 找不到 `SyImSDK` 时先 `pod repo update`（本机 CDN 缓存未更新）。

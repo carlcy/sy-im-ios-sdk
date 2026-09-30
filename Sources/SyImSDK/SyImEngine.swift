@@ -525,10 +525,7 @@ public final class SyImEngine {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-        let biz = json["code"] as? Int ?? (code >= 200 && code < 300 ? 0 : -1)
-        guard code >= 200 && code < 300, biz == 0 else {
-            throw SyImError.openImApi(json["msg"] as? String ?? "getToken HTTP \(code)")
-        }
+        try SyImErrorCode.check(httpStatus: code, json: json)
         return (json["data"] as? [String: Any]) ?? [:]
     }
 
@@ -647,10 +644,7 @@ public final class SyImEngine {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-        let biz = json["code"] as? Int ?? (code >= 200 && code < 300 ? 0 : -1)
-        guard code >= 200 && code < 300, biz == 0 else {
-            throw SyImError.openImApi(json["msg"] as? String ?? "controlPlane HTTP \(code)")
-        }
+        try SyImErrorCode.check(httpStatus: code, json: json)
         return json["data"] ?? [:]
     }
 
@@ -697,6 +691,14 @@ public enum SyImError: Error, LocalizedError {
     case openImLoginFailed(String)
     case openImApi(String)
     case openImSendDenied(String)
+    /// 控制面（`/api/user/im/…`）失败。`code` 为服务端业务码（见 `SyImErrorCode`），响应体没有 code 时为 HTTP 状态码。
+    case controlPlane(code: Int, httpStatus: Int, message: String)
+
+    /// 控制面业务码；其他错误为 nil。
+    public var code: Int? {
+        if case .controlPlane(let code, _, _) = self { return code }
+        return nil
+    }
 
     public var errorDescription: String? {
         switch self {
@@ -707,6 +709,7 @@ public enum SyImError: Error, LocalizedError {
         case .openImLoginFailed(let s): return "OpenIM login failed: \(s)"
         case .openImApi(let s): return s
         case .openImSendDenied(let s): return s
+        case .controlPlane(let code, _, let message): return "[\(code)] \(message)"
         }
     }
 }

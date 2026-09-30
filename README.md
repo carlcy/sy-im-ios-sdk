@@ -156,6 +156,23 @@ func onUnreadChanged(_ update: SyImUnreadUpdate) {}
 
 `getConversations()` / `getTotalUnreadCount()` 只更新缓存，不触发上面的回调。`markConversationAsRead` 成功后先按本地缓存把该会话未读记为 0 并回调，再拉一次总未读校正。
 
+### 错误码
+
+控制面（`getToken`、`controlPlanePost`、好友 / 群 / 历史 / 撤回）失败时抛 `SyImError.controlPlane(code:httpStatus:message:)`，`error.code` 为服务端业务码。取值在 `SyImErrorCode`，与 Android `ImErrorCode`、Flutter `SyImErrorCode` 相同：
+
+| code | 常量 | 含义 |
+|---|---|---|
+| 401 / 403 | `unauthorized` / `forbidden` | JWT 无效 / 无权访问该应用 |
+| 3001 | `imNotEnabled` | 应用未开通 IM |
+| 3003 / 3004 | `quotaMau` / `quotaMessages` | 月活 / 消息量超出套餐 |
+| 4003 | `trialRetired` | 体验版已下线 |
+| 4005 | `sensitiveRejected` | 敏感词拦截 |
+| 4006 | `contentRejected` | 发送前内容审核拒绝或审核服务不可达 |
+| 4031 / 4032 / 4033 | `credentialSuspended` / `Revoked` / `Expired` | AppId 访问凭证暂停 / 吊销 / 过期 |
+| 4290 | `rateLimited` | 请求过于频繁 |
+
+此前这些失败抛的是 `SyImError.openImApi(msg)`，拿不到码。OpenIM SDK 自己的错误（登录、实时收发）仍是 OpenIM 错误码。
+
 ### 与腾讯云 IM 对齐、且 OpenIM 支持的能力
 
 这些方法走默认 `backend: .openImSdk`。`backend: .httpWs` 会抛错。

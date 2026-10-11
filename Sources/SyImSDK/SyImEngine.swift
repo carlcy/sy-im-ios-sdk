@@ -29,7 +29,7 @@ public enum SyImClientBackend: String, Sendable {
 /// 公共 API 与 Android `ImEngine` / Flutter `SyIm` 对齐。
 /// **默认** `backend: .openImSdk` → CocoaPods `OpenIMSDK` / `RealOpenImClient`。
 /// HttpWs 仅在显式 `backend: .httpWs` 时使用；地址为空且 `.mock` 时用 Mock。
-/// 客户接入：`pod 'SyImSDK', '~> 0.5.0'`。OpenIM iOS 无 SPM，生产不要用 Package.swift。
+/// 客户接入：`pod 'SyImSDK', '~> 0.5.1'`。OpenIM iOS 无 SPM，生产不要用 Package.swift。
 public final class SyImEngine {
     public let appId: String
     public let apiBaseUrl: String

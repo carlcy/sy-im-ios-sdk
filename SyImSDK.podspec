@@ -1,15 +1,15 @@
 Pod::Spec.new do |s|
   s.name             = 'SyImSDK'
-  s.version          = '0.5.0'
+  s.version          = '0.5.1'
   s.summary          = 'SY IM iOS SDK. CocoaPods OpenIMSDK is the production client.'
   s.description      = <<-DESC
-    SY instant messaging SDK for iOS. Customers add `pod 'SyImSDK', '~> 0.5.0'`.
+    SY instant messaging SDK for iOS. Customers add `pod 'SyImSDK', '~> 0.5.1'`.
     This pod depends on OpenIMSDK 3.8.3+hotfix.3.1, so CocoaPods resolves that
     pin automatically. Do not download or unzip a framework.
     OpenIM iOS publishes CocoaPods only (OpenIMSDKCore is a vendored xcframework)
     and has no Swift Package, so SPM cannot pull the production dependency.
     HttpWsOpenImClient remains an explicit fallback (`backend: .httpWs`).
-    `SyImSDKVersion.current` is 0.5.0, the same value as this podspec.
+    `SyImSDKVersion.current` is 0.5.1, the same value as this podspec.
   DESC
   s.homepage         = 'https://github.com/carlcy/sy-im-ios-sdk'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }

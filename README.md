@@ -1,4 +1,4 @@
-# SyImSDK 0.5.0
+# SyImSDK 0.5.1
 
 SY 即时通信 iOS SDK。数据面走官方 OpenIMSDK，控制面用 SY 签发 IM Token。
 
@@ -17,7 +17,7 @@ platform :ios, '13.0'
 use_frameworks! :linkage => :static
 
 target 'YourApp' do
-  pod 'SyImSDK', '~> 0.5.0'
+  pod 'SyImSDK', '~> 0.5.1'
 end
 ```
 
@@ -33,7 +33,7 @@ pod install
 
 必须 `use_frameworks! :linkage => :static`。OpenIM 的核心是静态 xcframework，动态链接会报 transitive static binary 错误。
 
-`SyImSDK` 0.5.0 已发布到 CocoaPods trunk，上面这一行直接可用。维护者发布步骤见文末。
+`SyImSDK` 0.5.1 已发布到 CocoaPods trunk，上面这一行直接可用。维护者发布步骤见文末。
 
 ### 2. 初始化
 
@@ -103,7 +103,7 @@ func onRecvNewMessage(msgId: String, fromUserId: String, groupId: String?, text:
 示例工程与客户工程同一行依赖：
 
 ```ruby
-pod 'SyImSDK', '~> 0.5.0'
+pod 'SyImSDK', '~> 0.5.1'
 ```
 
 ```bash
@@ -114,9 +114,9 @@ open SyImSDKExample.xcworkspace
 
 界面有两个 Tab。**会话** Tab 把总未读显示在 `tabBarItem.badgeValue`（0 不显示，大于 99 显示 `99+`），OpenIM 未读监听和标已读之后都会立刻变。**联调** Tab：填写 User JWT → 获取 IM Token → 初始化 → 登录 → 发送文本。
 
-版本号四处一致：`SyImSDK.podspec`、`VERSION`、`SyImSDKVersion.current`、示例 `MARKETING_VERSION` / `CFBundleShortVersionString`，都是 `0.5.0`。
+版本号四处一致：`SyImSDK.podspec`、`VERSION`、`SyImSDKVersion.current`、示例 `MARKETING_VERSION` / `CFBundleShortVersionString`，都是 `0.5.1`。
 
-`SyImSDK` 0.5.0 已在 trunk；`pod install` 找不到时先 `pod repo update`。
+`SyImSDK` 0.5.1 已在 trunk；`pod install` 找不到时先 `pod repo update`。
 
 ## 公开 API（在原有初始化 / 登录 / 发消息之上追加）
 
@@ -209,19 +209,19 @@ Android（`ImControlPlane.reactToMessage` 等）与 Flutter 同名同参。
 
 `SyImConversation` 增加了 `isPinned`、`draftText`、`receiveOption`，旧的初始化参数都有默认值。
 
-## 维护者：打 0.5.0 发布
+## 维护者：打 0.5.1 发布
 
 本机没有 CocoaPods trunk 权限，需要仓库所有者在 **macOS + Xcode** 上执行。CocoaPods trunk 计划在 **2026-12-02** 变为只读，请在那之前推上去。
 
-1. 确认 `SyImSDK.podspec` 的 `s.version`、`VERSION`、`SyImSDKVersion.current`、示例 `MARKETING_VERSION` 都是 `0.5.0`。`s.source` 的 tag 是 `v0.5.0`。
+1. 确认 `SyImSDK.podspec` 的 `s.version`、`VERSION`、`SyImSDKVersion.current`、示例 `MARKETING_VERSION` 都是 `0.5.1`。`s.source` 的 tag 是 `v0.5.1`。
 2. 把本分支合并进 `main` 并推送。
 3. 打 tag（必须先有 tag，`pod trunk push` 会按 tag 拉源码）：
 
    ```bash
    git checkout main
    git pull
-   git tag v0.5.0
-   git push origin v0.5.0
+   git tag v0.5.1
+   git push origin v0.5.1
    ```
 
 4. 第一次发布先登记会话（只需一次）：
@@ -251,8 +251,8 @@ Android（`ImControlPlane.reactToMessage` 等）与 Flutter 同名同参。
    cd example && pod install
    ```
 
-   `pod install` 应锁到 `SyImSDK 0.5.0`，并自动带上 `OpenIMSDK 3.8.3+hotfix.3.1`。
+   `pod install` 应锁到 `SyImSDK 0.5.1`，并自动带上 `OpenIMSDK 3.8.3+hotfix.3.1`。
 
-以后发 0.5.x：改 `s.version` 和 `VERSION`，打 `v` 前缀 tag，再 `pod trunk push`。客户那行 `~> 0.5.0` 会吃到 `>= 0.5.0` 且 `< 0.6.0`。不要复用已经发布过的版本号。
+以后发 0.5.x：改 `s.version` 和 `VERSION`，打 `v` 前缀 tag，再 `pod trunk push`。客户那行 `~> 0.5.1` 会吃到 `>= 0.5.1` 且 `< 0.6.0`。不要复用已经发布过的版本号。
 
-若 trunk 已只读，改用私有 spec 仓库：`pod repo push <repo> SyImSDK.podspec`。客户 Podfile 要先加 `source`，依赖行仍然是 `pod 'SyImSDK', '~> 0.5.0'`。
+若 trunk 已只读，改用私有 spec 仓库：`pod repo push <repo> SyImSDK.podspec`。客户 Podfile 要先加 `source`，依赖行仍然是 `pod 'SyImSDK', '~> 0.5.1'`。

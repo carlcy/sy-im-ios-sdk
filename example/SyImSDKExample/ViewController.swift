@@ -36,7 +36,7 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
         view.backgroundColor = .systemBackground
         setupUI()
         #if targetEnvironment(simulator)
-        appendLog("依赖 pod 'SyImSDK', '~> 0.5.0'。OpenIMSDK 由 podspec 自动解析，不要下载 framework。")
+        appendLog("依赖 pod 'SyImSDK', '~> 0.5.1'。OpenIMSDK 由 podspec 自动解析，不要下载 framework。")
         #else
         appendLog("真机：pod install 后由 OpenIMSDK 收发。自签证书把服务端 CA 装进系统信任。")
         #endif
@@ -314,7 +314,7 @@ final class ViewController: UIViewController, UITextFieldDelegate, ImEventListen
         hint.numberOfLines = 0
         hint.font = .systemFont(ofSize: 12)
         hint.textColor = .secondaryLabel
-        hint.text = "版本 \(SyImSDKVersion.current)。Podfile：pod 'SyImSDK', '~> 0.5.0'（静态链接）。会话 Tab 的角标是总未读，标已读后立刻刷新。"
+        hint.text = "版本 \(SyImSDKVersion.current)。Podfile：pod 'SyImSDK', '~> 0.5.1'（静态链接）。会话 Tab 的角标是总未读，标已读后立刻刷新。"
 
         [status, hint,
          labeled("AppId", appIdField),

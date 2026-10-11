@@ -94,9 +94,9 @@ public struct SyImSearchHit: Equatable, Sendable {
     }
 }
 
-/// 与 podspec / VERSION / 示例工程同为 0.5.0。
+/// 与 podspec / VERSION / 示例工程同为 0.5.1。
 public enum SyImSDKVersion {
-    public static let current = "0.5.0"
+    public static let current = "0.5.1"
 }
 
 /// Chat bubble used by the example UI (local mock or OpenIM message).
